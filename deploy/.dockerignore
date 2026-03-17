@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.env.local
+.antigravity
+*.md
+Dockerfile
+.dockerignore
+package-lock.json
