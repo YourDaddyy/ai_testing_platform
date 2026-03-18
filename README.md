@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CRM AI Platform (CRM 智能日志分析平台)
 
-## Getting Started
+基于 Next.js 开发的智能化日志全链路分析与调试工具，旨在通过 AI 技术简化复杂的分布式系统日志排查流程。
 
-First, run the development server:
+## 🌟 核心特性
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **多端日志聚合**：支持 BSSP、SAC、TE、BOP 等核心系统的日志远程抓取与实时监控。
+- **智能化诊断**：集成 AI 深度全链路分析，能够根据业务流水号自动识别性能瓶颈、逻辑冲突及潜在错误节点。
+- **高效日志搜寻**：
+  - 采用 `find` + `grep` 组合，支持 48 小时内的全文件覆盖搜索。
+  - 针对高负载服务器进行了性能优化（Locale/Parallel 优化预留）。
+- **文件分组展示**：日志按源文件名自动分组，支持 Accordion 折叠视图，提供清晰的调试上下文。
+- **状态持久化**：使用 Zustand + LocalStorage 实现全局状态持久化，切换页面或刷新浏览器不丢失调试现场。
+- **响应报文美化**：自动识别并美化 JSON/XML 报文，提升阅读体验。
+
+## 🚀 快速开始
+
+### 1. 环境配置
+在项目根目录下创建 `.env.local` 文件并配置：
+```env
+# AI 配置
+AI_API_KEY=your_api_key
+AI_MODEL=your_model
+AI_BASE_URL=your_base_url
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. 一键启动（生产模式）
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Windows:**
+```
+start-app.bat
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Linux / Mac:**
+```bash
+chmod +x start-app.sh
+./start-app.sh
+```
 
-## Learn More
+### 3. 开发模式
+```bash
+npm install
+npm run dev
+```
+访问 [http://localhost:3000](http://localhost:3000) 即可开始。
 
-To learn more about Next.js, take a look at the following resources:
+## 📁 项目结构
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `src/app`: Next.js 页面与 API 路由处理。
+- `src/components`: UI 组件（HTTP 工具、日志标签页等）。
+- `src/store`: 全局状态管理（Zustand）。
+- `src/lib`: 工具类与默认环境配置。
+- `scripts/`: 用于主机配置生成与数据迁移的辅助脚本。
+- `docker/`: 容器化部署方案（Dockerfile）。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🔧 技术栈
 
-## Deploy on Vercel
+- **Frontend**: Next.js, React, Tailwind CSS, Lucide React, Radix UI
+- **State**: Zustand
+- **AI**: 通用 LLM 接口适配 (SSE Streaming)
+- **Backend**: Node.js, node-ssh (SSH2)
+- **Editor**: Monaco Editor
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Developed for UniDev CRM Log Analysis.
