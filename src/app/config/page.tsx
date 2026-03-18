@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useConfigStore, Environment } from "@/store/useConfigStore";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, Copy, Download, Loader2, Plus, Save, ShieldCheck, Trash2, Upload, Zap } from "lucide-react";
+import { ChevronDown, Copy, Download, Loader2, Plus, Save, Trash2, Upload, Zap } from "lucide-react";
 import { toast } from "sonner";
 import {
   Card,
@@ -472,7 +472,7 @@ export default function ConfigPage() {
                                           isExpanded ? "max-h-[500px] opacity-100 border-t border-dashed" : "max-h-0 opacity-0 pointer-events-none"
                                         )}>
                                           <div className="p-4 space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                               <div className="space-y-1.5">
                                                 <label className="text-[10px] font-medium uppercase text-muted-foreground flex items-center gap-1">
                                                   节点标签 <span className="text-red-500/50">*</span>
@@ -505,24 +505,9 @@ export default function ConfigPage() {
                                                   className="font-mono text-xs h-8 bg-background/50 focus:bg-background transition-colors"
                                                 />
                                               </div>
-                                              <div className="space-y-1.5">
-                                                <label className="text-[10px] font-medium uppercase text-muted-foreground">日志路径 (多个以,隔开)</label>
-                                                <Input
-                                                  value={node.sshLogPaths || ""}
-                                                  placeholder="/var/log/app.log"
-                                                  onChange={(e) => {
-                                                    const newNodes = [...nodes];
-                                                    newNodes[nodeIdx] = { ...node, sshLogPaths: e.target.value };
-                                                    updateEnvironment(selectedEnv.id, {
-                                                      hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
-                                                    });
-                                                  }}
-                                                  className="font-mono text-[10px] h-8 bg-background/50 focus:bg-background transition-colors"
-                                                />
-                                              </div>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-1 border-t border-dashed mt-2">
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1 border-t border-dashed mt-2">
                                               <div className="space-y-1.5">
                                                 <label className="text-[10px] font-medium uppercase text-muted-foreground">SSH 目标 IP</label>
                                                 <Input
@@ -599,24 +584,12 @@ export default function ConfigPage() {
                                                                   value={`${h.name} ${h.host} ${h.user}`}
                                                                   onSelect={() => {
                                                                     const newNodes = [...nodes];
-                                                                    // Try to extract potential log path from name if it contains "/"
-                                                                    let detectedPath = "";
-                                                                    if (h.name && h.name.includes("/")) {
-                                                                      const matches = h.name.match(/\/[\w\-\/]+/);
-                                                                      if (matches) {
-                                                                        detectedPath = matches[0].replace(/-/g, "/");
-                                                                        if (detectedPath.endsWith("/")) detectedPath = detectedPath.slice(0, -1);
-                                                                      }
-                                                                    }
-
-                                                                    newNodes[nodeIdx] = { 
-                                                                      ...node, 
+                                                                    newNodes[nodeIdx] = {
+                                                                      ...node,
                                                                       sshHost: h.host,
                                                                       sshPort: h.port || 22,
                                                                       sshUsername: h.user || "",
                                                                       sshPassword: h.pass || node.sshPassword,
-                                                                      sshLogPaths: detectedPath || h.path || node.sshLogPaths,
-                                                                      encoding: h.encoding || node.encoding
                                                                     };
                                                                     updateEnvironment(selectedEnv.id, {
                                                                       hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
@@ -635,21 +608,6 @@ export default function ConfigPage() {
                                                     </PopoverContent>
                                                   </Popover>
                                                 </div>
-                                              </div>
-                                              <div className="space-y-1.5">
-                                                <label className="text-[10px] font-medium uppercase text-muted-foreground">文件编码</label>
-                                                <Input
-                                                  value={node.encoding || ""}
-                                                  placeholder="utf8 / gbk"
-                                                  onChange={(e) => {
-                                                    const newNodes = [...nodes];
-                                                    newNodes[nodeIdx] = { ...node, encoding: e.target.value };
-                                                    updateEnvironment(selectedEnv.id, {
-                                                      hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
-                                                    });
-                                                  }}
-                                                  className="font-mono text-xs h-8 bg-background/50 focus:bg-background transition-colors"
-                                                />
                                               </div>
                                               <div className="space-y-1.5">
                                                 <label className="text-[10px] font-medium uppercase text-muted-foreground">SSH 密码 (选填)</label>

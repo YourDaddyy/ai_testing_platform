@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { NodeSSH } from "node-ssh";
 import iconv from "iconv-lite";
+import { SERVICE_LOG_CONFIGS } from "@/lib/serviceLogConfigs";
 
 interface HostConfig {
   host: string;
@@ -10,35 +11,44 @@ interface HostConfig {
   logPaths: string[];
   label?: string;
   encoding?: string;
+  grepTemplate?: string;
 }
 
 function getHostConfigs(source: string, envHosts: Record<string, any>): HostConfig[] {
   const key = source.toLowerCase();
   const overrides = envHosts?.[key];
+  if (!Array.isArray(overrides)) return [];
 
-  if (Array.isArray(overrides)) {
-    return overrides
-      .filter(o => o.sshHost) // skip nodes with no SSH host
-      .map(o => ({
-        host: o.sshHost,
-        port: Number(o.sshPort) || 22,          // handle both string & number
-        username: o.sshUsername || "root",
-        password: o.sshPassword || "",
-        logPaths: (o.sshLogPaths || "")
-          .split(",")
-          .map((s: string) => s.trim())
-          .filter((s: string) => s && s !== "~" && s !== ""), // skip '~' and empty
-        label: o.label,
-        encoding: o.encoding,
-      }));
+  const svc = SERVICE_LOG_CONFIGS[key];
+
+  return overrides
+    .filter(o => o.sshHost)
+    .map(o => ({
+      host: o.sshHost,
+      port: Number(o.sshPort) || 22,
+      username: o.sshUsername || "root",
+      password: o.sshPassword || "",
+      logPaths: svc?.logPaths ?? [],
+      label: o.label,
+      encoding: svc?.encoding ?? "utf8",
+      grepTemplate: svc?.grepTemplate,
+    }));
+}
+
+async function runGrep(ssh: NodeSSH, cmd: string, encoding: string): Promise<string[]> {
+  const chunks: Buffer[] = [];
+  try {
+    await ssh.exec(cmd, [], { onStdout: (chunk: Buffer) => chunks.push(chunk) });
+  } catch {
+    const res = await ssh.execCommand(cmd);
+    if (res.stdout) chunks.push(Buffer.from(res.stdout));
   }
-
-  return [];
+  const text = iconv.decode(Buffer.concat(chunks), encoding);
+  return text.split("\n").filter(Boolean);
 }
 
 async function sshGrep(cfg: HostConfig, queryKey: string): Promise<string[]> {
   const ssh = new NodeSSH();
-
   if (!cfg.host) return [];
 
   await ssh.connect({
@@ -50,67 +60,38 @@ async function sshGrep(cfg: HostConfig, queryKey: string): Promise<string[]> {
     hostVerifier: () => true,
   });
 
-  try {
-    const lines: string[] = [];
-    const escaped = queryKey.replace(/"/g, '\\"');
+  const encoding = cfg.encoding?.toLowerCase() === "gbk" ? "gbk" : "utf8";
+  const escaped = queryKey.replace(/"/g, '\\"');
 
-    if (cfg.logPaths.length === 0) {
-      // Auto-discover: find files in common directories that contain the key
-      const findCmd = `grep -rl "${escaped}" /bosslog1 /home /opt /var/log 2>/dev/null | head -5`;
-      const found = await ssh.execCommand(findCmd, { execOptions: { pty: false } });
-      if (found.stdout.trim()) {
-        cfg.logPaths = found.stdout.trim().split("\n").filter(Boolean);
-      }
+  try {
+    // Custom command takes priority
+    if (cfg.grepTemplate) {
+      const cmd = cfg.grepTemplate.replace("{KEY}", escaped);
+      return await runGrep(ssh, cmd, encoding);
     }
 
+    const lines: string[] = [];
+
     for (const logPath of cfg.logPaths) {
-      let grepCmd = "";
+      let cmd = "";
 
       if (logPath.includes("*")) {
-        // Wildcard path – expand directly with shell glob
-        grepCmd = `grep -h "${escaped}" ${logPath} 2>/dev/null | tail -500`;
+        cmd = `grep -aH "${escaped}" ${logPath} 2>/dev/null | tail -2000`;
       } else {
-        // Check path type
         const check = await ssh.execCommand(
           `if [ -d "${logPath}" ]; then echo dir; elif [ -f "${logPath}" ]; then echo file; else echo none; fi`,
           { execOptions: { pty: false } }
         );
-        const pathType = check.stdout.trim();
-        if (pathType === "none") continue;
-
-        if (pathType === "dir") {
-          // 容错与稳定性优先：先恢复到一个兼容性更好的搜索命令。
-          // 增加到 2880 分钟（48小时）覆盖范围，使用 find 代替 ls 避免大文件列表排序。
-          grepCmd = `find "${logPath}" -maxdepth 1 -type f -mmin -2880 2>/dev/null | xargs grep -H "${escaped}" 2>/dev/null | tail -500`;
+        const type = check.stdout.trim();
+        if (type === "none") continue;
+        if (type === "dir") {
+          cmd = `find "${logPath}" -maxdepth 1 -type f 2>/dev/null | xargs -r grep -aH "${escaped}" 2>/dev/null | tail -2000`;
         } else {
-          // 单个文件模式也加上 -H，统一返回格式
-          grepCmd = `grep -H "${escaped}" "${logPath}" 2>/dev/null | tail -500`;
+          cmd = `grep -aH "${escaped}" "${logPath}" 2>/dev/null | tail -2000`;
         }
       }
 
-      if (!grepCmd) continue;
-
-      // Execute grep and capture raw buffer to handle GBK correctly
-      const chunks: Buffer[] = [];
-      try {
-        await ssh.exec(grepCmd, [], {
-          onStdout: (chunk: Buffer) => chunks.push(chunk),
-        });
-      } catch (execErr) {
-        console.warn(`Grep failed on ${cfg.host}:`, execErr);
-        // Fallback to execCommand if exec fails
-        const res = await ssh.execCommand(grepCmd);
-        if (res.stdout) chunks.push(Buffer.from(res.stdout));
-      }
-
-      const finalBuffer = Buffer.concat(chunks);
-      const encoding = cfg.encoding?.toLowerCase() === 'gbk' ? 'gbk' : 'utf8';
-      const stdOutStr = iconv.decode(finalBuffer, encoding);
-      
-      const foundLines = stdOutStr.split("\n").filter(Boolean);
-      if (foundLines.length > 0) {
-        lines.push(...foundLines);
-      }
+      lines.push(...await runGrep(ssh, cmd, encoding));
     }
 
     return lines;
@@ -140,23 +121,49 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const LOG_PATTERN = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.,]\d{1,3})[\s\[\]]+(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)[\s\]]+(.+)/i;
+// TE text log: "PID: 1261824 TIME: 2026/03/18 13:42:44.961.780 LEVEL: 4 MSG: ..."
+const TE_LOG_PATTERN = /TIME:\s*(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\.\d+\s+LEVEL:\s*(\d+)\s+MSG:\s*([\s\S]+)/i;
+
+function parseTETimestamp(ts: string): string {
+  const m = ts.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\.(\d+)/);
+  if (!m) return new Date().toISOString();
+  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.${m[7].substring(0, 3)}`).toISOString();
+}
+
+function parseTELevel(level: string): "INFO" | "WARN" | "ERROR" | "DEBUG" {
+  const n = parseInt(level);
+  if (n <= 2) return "ERROR";
+  if (n === 3) return "WARN";
+  if (n >= 5) return "DEBUG";
+  return "INFO";
+}
 
 function parseLine(raw: string, source: string, hostLabel: string | undefined, idx: number, fileName?: string): LogEntry {
+  if (source === "te") {
+    const teM = raw.match(TE_LOG_PATTERN);
+    if (teM) {
+      return {
+        id: `${source}_${hostLabel || "node"}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: parseTETimestamp(teM[1]),
+        source,
+        sourceLabel: SOURCE_LABELS[source] || source.toUpperCase(),
+        hostLabel,
+        level: parseTELevel(teM[2]),
+        message: teM[3].trim(),
+        raw,
+        fileName,
+      };
+    }
+  }
   const m = raw.match(LOG_PATTERN);
-  const level = normalizeLevel(m?.[2]);
-  const message = m?.[3]?.trim() ?? raw.trim();
-  const timestamp = m?.[1]
-    ? new Date(m[1].replace(",", ".")).toISOString()
-    : new Date().toISOString();
-
   return {
     id: `${source}_${hostLabel || "node"}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
-    timestamp,
+    timestamp: m?.[1] ? new Date(m[1].replace(",", ".")).toISOString() : new Date().toISOString(),
     source,
     sourceLabel: SOURCE_LABELS[source] || source.toUpperCase(),
     hostLabel,
-    level,
-    message,
+    level: normalizeLevel(m?.[2]),
+    message: m?.[3]?.trim() ?? raw.trim(),
     raw,
     fileName,
   };
@@ -185,35 +192,30 @@ export async function POST(req: NextRequest) {
 
     const queryPromises = sources.flatMap((source: string) => {
       const configs = getHostConfigs(source, hosts);
-
-      if (!configs || configs.length === 0) {
+      if (!configs.length) {
         errors.push(`未配置来源: ${source}`);
         return [];
       }
-
       return configs.map(async (cfg) => {
         try {
           const rawLines = await sshGrep(cfg, queryKey);
-          if (rawLines.length > 0) {
-            results.push(...rawLines.map((raw, i) => {
-              // Parse "filename:content" from grep output
-              let fileName = "unknown";
-              let content = raw;
-              
-              const firstColon = raw.indexOf(':');
-              if (firstColon > 0) {
-                const potentialFile = raw.substring(0, firstColon);
-                // Heuristic: paths usually contain / or . for extensions
-                if (potentialFile.includes('/') || potentialFile.includes('.')) {
-                  fileName = potentialFile.split('/').pop() || potentialFile;
-                  content = raw.substring(firstColon + 1);
-                }
-              }
-              return parseLine(content, source, cfg.label, i, fileName);
-            }));
-          } else {
+          if (!rawLines.length) {
             errors.push(`${SOURCE_LABELS[source] || source} [${cfg.label || cfg.host}]: 暂无匹配到流水号的日志`);
+            return;
           }
+          rawLines.forEach((raw, i) => {
+            let fileName = "unknown";
+            let content = raw;
+            const colon = raw.indexOf(":");
+            if (colon > 0) {
+              const pre = raw.substring(0, colon);
+              if (pre.includes("/") || pre.includes(".")) {
+                fileName = pre.split("/").pop() || pre;
+                content = raw.substring(colon + 1);
+              }
+            }
+            results.push(parseLine(content, source, cfg.label, i, fileName));
+          });
         } catch (err: any) {
           errors.push(`${SOURCE_LABELS[source] || source} [${cfg.label || cfg.host}]: 连接失败 — ${err.message}`);
         }
@@ -222,10 +224,7 @@ export async function POST(req: NextRequest) {
 
     await Promise.allSettled(queryPromises);
 
-    const sorted = results.sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-
+    const sorted = results.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     return NextResponse.json({ logs: sorted, errors });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

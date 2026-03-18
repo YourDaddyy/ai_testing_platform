@@ -30,9 +30,19 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# server-side config (contains credentials)
+config.json
+
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+
+# dev artifacts
+.claude/
+plan.md
+dev.log
+data/
+scripts/
 
 # vercel
 .vercel

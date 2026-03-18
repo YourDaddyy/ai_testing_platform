@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { LangProvider } from "@/lib/i18n";
+import { ConfigLoader } from "@/components/ConfigLoader";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -30,6 +31,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <LangProvider>
+          <ConfigLoader />
           <AppSidebar />
           <div className="flex flex-col flex-1 h-screen overflow-hidden">
             <AppHeader />

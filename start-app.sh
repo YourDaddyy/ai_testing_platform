@@ -23,12 +23,16 @@ else
 
     echo "[2/2] Building application..."
     npm run build
+
+    echo "[INFO] Copying static assets to standalone..."
+    cp -r .next/static .next/standalone/.next/static
+    [ -d public ] && cp -r public .next/standalone/public
 fi
 
 # ── Start server in background ─────────────────────────────────────────────────
 echo ""
 echo "[INFO] Starting server..."
-npm run start &
+node .next/standalone/server.js &
 SERVER_PID=$!
 
 # ── Wait until localhost:3000 is ready ─────────────────────────────────────────
