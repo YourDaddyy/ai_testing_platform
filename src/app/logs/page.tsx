@@ -1,42 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLang } from "@/lib/i18n";
 import { useConfigStore } from "@/store/useConfigStore";
+import { useLogStore } from "@/store/useLogStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Search,
-  AlertCircle,
-  AlertTriangle,
-  Info,
-  Bug,
-  ServerIcon,
-  ChevronDown,
-  ChevronRight,
-  Copy,
   Activity,
   Check,
+  Globe,
+  ArrowUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-
-interface LogEntry {
-  id: string;
-  timestamp: string;
-  source: string;
-  sourceLabel: string;
-  hostLabel?: string;
-  level: "INFO" | "WARN" | "ERROR" | "DEBUG";
-  message: string;
-  raw: string;
-}
+import { InlineLogsTab } from "@/components/http-tool/InlineLogsTab";
 
 const ALL_SOURCES = [
   { key: "bssp", label: "BSSP" },
@@ -47,100 +29,121 @@ const ALL_SOURCES = [
   { key: "te", label: "TE" },
 ] as const;
 
-const LEVEL_CONFIG = {
-  ERROR: { icon: AlertCircle, color: "text-red-400", bg: "bg-red-950/40 border-red-800" },
-  WARN: { icon: AlertTriangle, color: "text-yellow-400", bg: "bg-yellow-950/40 border-yellow-800" },
-  INFO: { icon: Info, color: "text-sky-400", bg: "bg-sky-950/30 border-sky-900" },
-  DEBUG: { icon: Bug, color: "text-gray-400", bg: "bg-gray-900/30 border-gray-800" },
-};
-
 const SOURCE_COLORS: Record<string, string> = {
-  bssp: "bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20",
-  sac: "bg-purple-500/10 text-purple-400 border-purple-500/30 hover:bg-purple-500/20",
-  bop: "bg-orange-500/10 text-orange-400 border-orange-500/30 hover:bg-orange-500/20",
-  cmc: "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20",
-  container: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20",
-  te: "bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20",
+  bssp: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  sac: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+  bop: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+  cmc: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  container: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  te: "bg-rose-500/10 text-rose-400 border-rose-500/30",
 };
 
-function LogEntryRow({ entry }: { entry: LogEntry }) {
-  const [expanded, setExpanded] = useState(false);
-  const cfg = LEVEL_CONFIG[entry.level] || LEVEL_CONFIG.INFO;
-  const Icon = cfg.icon;
+const STORAGE_KEY_SOURCES = "crm-logs-selected-sources";
+const STORAGE_KEY_QUERY = "crm-logs-last-query";
+const STORAGE_KEY_HAS_QUERIED = "crm-logs-has-queried";
 
-  const copyRaw = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(entry.raw);
-    toast.success("Copied to clipboard");
-  };
+function AggregatedServiceBlock({ 
+  source, 
+  sourceLabel, 
+  autoQueryKey, 
+  hostConfigs 
+}: { 
+  source: string; 
+  sourceLabel: string; 
+  autoQueryKey: string; 
+  hostConfigs: any[] 
+}) {
+  const { t } = useLang();
+  const logs = useLogStore((state) => state.logsBySource[source] || []);
+  const queried = useLogStore((state) => state.queriedBySource[source] || false);
+  
+  if (queried && logs.length === 0) return null;
 
   return (
-    <div
-      className={`border rounded-md mb-1.5 cursor-pointer transition-all ${cfg.bg} hover:brightness-110`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      <div className="flex items-start gap-2 px-3 py-2">
-        <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${cfg.color}`} />
-        <span className="text-xs text-muted-foreground font-mono shrink-0 w-[160px]">
-          {new Date(entry.timestamp).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 })}
-        </span>
-        <Badge className={`text-[10px] shrink-0 border ${SOURCE_COLORS[entry.source] || ""}`}>
-          {entry.sourceLabel}
+    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
+      <div className="flex items-center justify-between border-l-4 border-primary pl-4 py-1">
+        <div className="flex flex-col">
+          <h2 className="text-sm font-black tracking-[0.2em] uppercase text-foreground leading-tight">
+            {sourceLabel}
+          </h2>
+          <span className="text-[10px] text-muted-foreground opacity-40 uppercase font-mono">
+            {logs.length > 0 ? t("log_node_activity") : t("log_connected")}
+          </span>
+        </div>
+        <Badge variant="outline" className={cn("text-[10px] py-0 px-2 h-5 font-bold shadow-sm whitespace-nowrap uppercase", SOURCE_COLORS[source])}>
+          {logs.length > 0 ? t("log_records_found") : t("log_connected")}
         </Badge>
-        {entry.hostLabel && (
-          <Badge variant="outline" className="text-[10px] shrink-0 font-mono border-muted-foreground/30 opacity-70">
-            {entry.hostLabel}
-          </Badge>
-        )}
-        <span className={`text-xs font-bold w-12 shrink-0 ${cfg.color}`}>{entry.level}</span>
-        <span className="text-xs font-mono flex-1 truncate">{entry.message}</span>
-        <div className="flex items-center gap-1 shrink-0">
-          <button onClick={copyRaw} className="p-0.5 rounded hover:bg-muted" title="Copy raw">
-            <Copy className="h-3 w-3 text-muted-foreground" />
-          </button>
-          {expanded ? (
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          )}
-        </div>
       </div>
-      {expanded && (
-        <div className="border-t px-3 py-2 bg-black/30">
-          <pre className="text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{entry.raw}</pre>
-        </div>
-      )}
+      
+      <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black/40">
+        <InlineLogsTab
+          source={source}
+          sourceLabel={sourceLabel}
+          autoQueryKey={autoQueryKey}
+          hostConfigs={hostConfigs}
+          hideControls={true}
+          hideEmpty={true}
+        />
+      </div>
     </div>
   );
 }
 
-// Hardcoded mock hosts — in real use this would come from the config store
-const MOCK_DEMO_LOGS: LogEntry[] = [
-  { id: "1", timestamp: new Date(Date.now() - 5000).toISOString(), source: "bssp", sourceLabel: "BSSP", level: "INFO", message: "[CS_NGModifyGroupProductCloud] Request received, txId=TEST20240316001", raw: "2024-03-16 10:00:01.123 INFO  [CS_NGModifyGroupProductCloud] Request received, txId=TEST20240316001\n  src_sys_code=CRM\n  operator=user001" },
-  { id: "2", timestamp: new Date(Date.now() - 4500).toISOString(), source: "bssp", sourceLabel: "BSSP", level: "INFO", message: "Calling downstream SAC service: url=http://10.47.213.26:8080/sac", raw: "2024-03-16 10:00:01.456 INFO  Calling downstream SAC service: url=http://10.47.213.26:8080/sac" },
-  { id: "3", timestamp: new Date(Date.now() - 4000).toISOString(), source: "sac", sourceLabel: "SAC", level: "INFO", message: "SAC received request, forwarding to subscription module", raw: "2024-03-16 10:00:01.900 INFO  SAC received request, forwarding to subscription module" },
-  { id: "4", timestamp: new Date(Date.now() - 3500).toISOString(), source: "cmc", sourceLabel: "CMC", level: "WARN", message: "DB connection pool 80% utilised, query may be slow", raw: "2024-03-16 10:00:02.100 WARN  DB connection pool 80% utilised, query may be slow\n  pool_size=20, used=16" },
-  { id: "5", timestamp: new Date(Date.now() - 3000).toISOString(), source: "cmc", sourceLabel: "CMC", level: "ERROR", message: "ORA-00001: unique constraint violated on CCS_ND.SUBS_GROUP_INFO", raw: "2024-03-16 10:00:02.345 ERROR ORA-00001: unique constraint violated on CCS_ND.SUBS_GROUP_INFO\n  SQL: INSERT INTO SUBS_GROUP_INFO...\n  at oracle.jdbc.driver.T4CTTIoer11.processError(T4CTTIoer11.java:630)" },
-  { id: "6", timestamp: new Date(Date.now() - 2000).toISOString(), source: "bssp", sourceLabel: "BSSP", level: "ERROR", message: "CMC response error: ORA-00001, rolling back transaction txId=TEST20240316001", raw: "2024-03-16 10:00:02.800 ERROR CMC response error: ORA-00001, rolling back transaction txId=TEST20240316001" },
-  { id: "7", timestamp: new Date(Date.now() - 1000).toISOString(), source: "bssp", sourceLabel: "BSSP", level: "INFO", message: "Response returned to CRM: result_code=9999, result_msg=系统异常", raw: "2024-03-16 10:00:03.100 INFO  Response returned to CRM: result_code=9999, result_msg=系统异常" },
-];
-
 export default function LogsPage() {
   const { t } = useLang();
-  const { environments } = useConfigStore();
+  const { environments, activeEnvId } = useConfigStore();
   const [queryKey, setQueryKey] = useState("");
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(
-    new Set(["bssp", "sac", "cmc"])
-  );
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
+  const [hasQueried, setHasQueried] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // 1. Persistence loading
+  useEffect(() => {
+    // Selected Sources
+    const savedSources = localStorage.getItem(STORAGE_KEY_SOURCES);
+    if (savedSources) {
+      try {
+        const parsed = JSON.parse(savedSources);
+        if (Array.isArray(parsed)) setSelectedSources(new Set(parsed));
+      } catch (e) { /* silent */ }
+    } else {
+      setSelectedSources(new Set(["bssp", "sac", "cmc"]));
+    }
+
+    // Last Query Key
+    const lastQuery = localStorage.getItem(STORAGE_KEY_QUERY);
+    if (lastQuery) setQueryKey(lastQuery);
+
+    // Has Queried state
+    const lastHasQueried = localStorage.getItem(STORAGE_KEY_HAS_QUERIED);
+    if (lastHasQueried === "true") setHasQueried(true);
+  }, []);
+
+  // 2. Persistence saving
+  useEffect(() => {
+    if (selectedSources.size > 0) {
+      localStorage.setItem(STORAGE_KEY_SOURCES, JSON.stringify(Array.from(selectedSources)));
+    }
+  }, [selectedSources]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_QUERY, queryKey);
+    localStorage.setItem(STORAGE_KEY_HAS_QUERIED, hasQueried ? "true" : "false");
+  }, [queryKey, hasQueried]);
+
+  // Handle environment selection
+  const [selectedEnvId, setSelectedEnvId] = useState<string>("");
   
-  // Use config store environments instead of hardcoded test/stage
-  const [selectedEnvId, setSelectedEnvId] = useState<string>(environments[0]?.id || "");
+  useEffect(() => {
+    // Sync with activeEnvId if it exists OR default to first available
+    if (activeEnvId) setSelectedEnvId(activeEnvId);
+    else if (environments.length > 0 && !selectedEnvId) setSelectedEnvId(environments[0].id);
+  }, [activeEnvId, environments]);
+
   const activeEnv = environments.find(e => e.id === selectedEnvId) || environments[0];
   
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasQueried, setHasQueried] = useState(false);
+  const [autoQueryKey, setAutoQueryKey] = useState("");
 
   const toggleSource = (key: string) => {
     setSelectedSources((prev) => {
@@ -151,82 +154,59 @@ export default function LogsPage() {
     });
   };
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!queryKey.trim()) {
-      toast.error("请输入查询关键字");
+      toast.error(t("log_query_key_ph"));
       return;
     }
     if (selectedSources.size === 0) {
-      toast.error("请至少选择一个日志来源");
+      toast.error(t("log_select_sources"));
       return;
     }
 
-    setIsLoading(true);
     setHasQueried(true);
+    setAutoQueryKey(`${queryKey.trim()}__${Date.now()}`);
+  };
 
-    try {
-      const res = await fetch("/api/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          queryKey: queryKey.trim(),
-          sources: Array.from(selectedSources),
-          env: activeEnv?.name || "test",
-          hosts: activeEnv?.hosts || {},
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        toast.error(data.error);
-        setLogs([]);
-        setErrors([data.error]);
-      } else {
-        setLogs(data.logs || []);
-        setErrors(data.errors || []);
-      }
-    } catch (err: any) {
-      setLogs([]);
-      setErrors([err.message || "无法连接到日志服务"]);
-    } finally {
-      setIsLoading(false);
+  const scrollToTop = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
-  const levelCounts = logs.reduce(
-    (acc, l) => ({ ...acc, [l.level]: (acc[l.level] || 0) + 1 }),
-    {} as Record<string, number>
-  );
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setShowScrollTop(e.currentTarget.scrollTop > 500);
+  };
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden bg-white dark:bg-[#09090b]">
       {/* Left panel: Query controls */}
-      <div className="w-72 shrink-0 border-r flex flex-col bg-card/30 overflow-auto">
-        <div className="p-4 border-b">
-          <h2 className="font-semibold text-base mb-1">{t("log_title")}</h2>
-          <p className="text-xs text-muted-foreground">按流水号或接口名查询各主机日志</p>
+      <div className="w-72 shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col bg-zinc-50/50 dark:bg-zinc-950/20 overflow-auto">
+        <div className="p-5 border-b border-zinc-200 dark:border-zinc-800">
+          <h2 className="font-bold text-lg tracking-tight mb-1">{t("nav_logs")}</h2>
+          <p className="text-[11px] text-muted-foreground opacity-70">
+            {t("log_ready_to_aggregate")}
+          </p>
         </div>
 
-        <div className="flex flex-col gap-4 p-4">
-          {/* Query Key */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">{t("log_query_key")}</label>
+        <div className="flex flex-col gap-6 p-5">
+          <div className="flex flex-col gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("log_query_key")}</label>
             <Input
               value={queryKey}
               onChange={(e) => setQueryKey(e.target.value)}
               placeholder={t("log_query_key_ph")}
-              className="text-sm h-9"
+              className="text-sm h-10 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-inner font-mono"
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             />
           </div>
 
-          {/* Environment */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">{t("log_env")}</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("log_env")}</label>
             <Select value={selectedEnvId} onValueChange={(v) => v && setSelectedEnvId(v)}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
+              <SelectTrigger className="h-10 text-sm border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                {/* Explicitly mapping SelectValue to get the name from the ID */}
+                <span className="truncate">{activeEnv?.name || t("log_env")}</span>
               </SelectTrigger>
               <SelectContent>
                 {environments.map(e => (
@@ -236,137 +216,131 @@ export default function LogsPage() {
             </Select>
           </div>
 
-          {/* Source selection */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium text-muted-foreground">{t("log_select_sources")}</label>
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-3">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("log_select_sources")}</label>
+            <div className="flex flex-col gap-1.5">
               {ALL_SOURCES.map(({ key, label }) => (
                 <label
                   key={key}
                   className={cn(
-                    "flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-all border",
+                    "flex items-center gap-3 cursor-pointer rounded-lg px-3 py-2 transition-all border",
                     selectedSources.has(key) 
-                      ? "bg-primary/10 border-primary/30 text-primary" 
-                      : "bg-transparent border-transparent hover:bg-muted text-muted-foreground"
+                      ? "bg-primary/5 border-primary/40 text-primary shadow-sm ring-1 ring-primary/20" 
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 text-muted-foreground"
                   )}
                 >
                   <input
                     type="checkbox"
                     checked={selectedSources.has(key)}
                     onChange={() => toggleSource(key)}
-                    className="sr-only" /* Hide original checkbox for custom UI */
+                    className="sr-only"
                   />
                   <div className={cn(
-                    "h-3 w-3 rounded-full border border-current flex items-center justify-center transition-all",
+                    "h-3.5 w-3.5 rounded-full border border-current flex items-center justify-center transition-all",
                     selectedSources.has(key) ? "bg-primary" : "bg-transparent"
                   )}>
-                    {selectedSources.has(key) && <Check className="h-2 w-2 text-primary-foreground" />}
+                    {selectedSources.has(key) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                   </div>
-                  <span className="text-xs font-medium">{label}</span>
+                  <span className="text-xs font-bold">{label}</span>
                 </label>
               ))}
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Link 
-              href={`/ai?txId=${encodeURIComponent(queryKey)}`}
-              className={cn(
-                buttonVariants({ variant: "outline", size: "sm" }),
-                "h-7 px-2 text-xs gap-1 opacity-80 hover:opacity-100 border-primary/30 text-primary"
-              )}
-              title="跳转到 AI 深度分析"
-            >
-              <Activity className="w-3 h-3" />
-              AI 分析
-            </Link>
-            <Button
-              size="sm"
-              disabled={isLoading}
-              onClick={() => handleSearch()}
-              className="h-7 px-2 text-xs gap-1 flex-1"
-            >
-              <Search className="w-3 h-3" />
-              {isLoading ? "Searching..." : "查询"}
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            onClick={handleSearch}
+            className="h-11 px-4 text-xs font-black uppercase tracking-widest gap-2 w-full shadow-lg active:scale-95 transition-all bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <Search className="w-4 h-4" />
+            {t("log_search")}
+          </Button>
+        </div>
+
+        <div className="mt-auto p-5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-100/30 dark:bg-zinc-900/10">
+           <Link href={`/ai?txId=${encodeURIComponent(queryKey)}`} className="block">
+             <Button variant="outline" size="sm" className="w-full text-[11px] h-10 gap-2 border-primary/20 text-primary hover:bg-primary/5 rounded-lg font-black uppercase italic tracking-tighter">
+               <Activity className="w-4 h-4" />
+               {t("nav_ai")}
+             </Button>
+           </Link>
         </div>
       </div>
 
-      {/* Right panel: Results */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Stats bar */}
-        {hasQueried && !isLoading && (
-          <div className="flex items-center gap-3 px-4 py-2 border-b bg-card/20 shrink-0 flex-wrap">
-            <span className="text-xs text-muted-foreground font-medium">
-              {t("log_total")} <span className="text-foreground font-bold">{logs.length}</span> {t("log_entries")}
-            </span>
-            <Separator orientation="vertical" className="h-4" />
-            {Object.entries(levelCounts).map(([level, count]) => {
-              const cfg = LEVEL_CONFIG[level as keyof typeof LEVEL_CONFIG] || LEVEL_CONFIG.INFO;
-              return (
-                <span key={level} className={`text-xs font-bold ${cfg.color}`}>
-                  {level}: {count}
-                </span>
-              );
-            })}
-            {errors.length > 0 && (
-              <>
-                <Separator orientation="vertical" className="h-4" />
-                {errors.map((e, i) => (
-                  <span key={i} className="text-xs text-yellow-400 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> {e}
-                  </span>
-                ))}
-              </>
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-background">
+        <div 
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="flex-1 overflow-y-auto scrollbar-hide snap-y"
+        >
+          <div className="p-10 min-h-full">
+            {!hasQueried ? (
+              <div className="flex flex-col items-center justify-center py-48 gap-8 text-muted-foreground/30">
+                <Globe className="h-24 w-24 animate-pulse opacity-5 text-primary" />
+                <div className="text-center space-y-2">
+                  <p className="text-xl font-black text-foreground opacity-10 uppercase tracking-[0.3em] italic">Diagnostic Hub</p>
+                  <p className="text-[11px] tracking-[0.2em] font-mono">{t("log_ready_to_aggregate")}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-6xl mx-auto space-y-12">
+                <div className="flex items-center justify-between border-b-2 border-zinc-200 dark:border-zinc-800 pb-8">
+                  <div className="space-y-2">
+                    <h1 className="text-3xl font-black tracking-tighter uppercase italic text-foreground leading-none">
+                      {t("log_search_summary")}
+                    </h1>
+                    <div className="flex items-center gap-3">
+                       <Badge variant="secondary" className="px-2 py-0 h-4 text-[9px] font-black opacity-60 bg-primary/10 text-primary">{t("log_identity")}</Badge>
+                       <span className="text-sm text-foreground/70 font-mono font-bold tracking-tight">{queryKey}</span>
+                       <Badge variant="secondary" className="px-2 py-0 h-4 text-[9px] font-black opacity-60 bg-muted text-muted-foreground uppercase">{activeEnv?.name}</Badge>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Badge variant="default" className="px-4 py-1.5 bg-primary text-primary-foreground font-black italic rounded-full shadow-lg shadow-primary/20 whitespace-nowrap">
+                      {Array.from(selectedSources).length} {t("log_services_monitored")}
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-30">Unified Engine 2.5</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-12 pt-4">
+                  {Array.from(selectedSources).map(source => {
+                    const sourceInfo = ALL_SOURCES.find(s => s.key === source);
+                    const hostConfigs = activeEnv?.hosts?.[source as keyof typeof activeEnv.hosts] || [];
+                    
+                    return (
+                      <AggregatedServiceBlock
+                        key={source}
+                        source={source}
+                        sourceLabel={sourceInfo?.label || source}
+                        autoQueryKey={autoQueryKey}
+                        hostConfigs={hostConfigs as any}
+                      />
+                    );
+                  })}
+                </div>
+                
+                <div className="pt-16 pb-12 flex flex-col items-center gap-4">
+                  <div className="h-px w-24 bg-zinc-200 dark:border-zinc-800" />
+                  <p className="text-[10px] text-muted-foreground opacity-30 font-mono uppercase tracking-[0.5em]">
+                    End of Result Stream
+                  </p>
+                </div>
+              </div>
             )}
-            <div className="ml-auto">
-               <Link href={`/ai?txId=${encodeURIComponent(queryKey)}`}>
-                <Button size="xs" variant="outline" className="gap-1 border-primary/30 text-primary hover:bg-primary/10">
-                  <Activity className="h-3 w-3" />
-                  AI 全链路分析
-                </Button>
-               </Link>
-            </div>
           </div>
+        </div>
+
+        {showScrollTop && (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="fixed bottom-10 right-10 h-12 w-12 rounded-full shadow-2xl animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 z-50 bg-primary border-none text-primary-foreground hover:bg-primary/90 flex items-center justify-center p-0"
+            onClick={scrollToTop}
+          >
+            <ArrowUp className="h-6 w-6" />
+          </Button>
         )}
-
-        {/* Log timeline */}
-        <ScrollArea className="flex-1">
-          <div className="p-4">
-            {isLoading && (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                <span className="text-sm text-muted-foreground">{t("log_searching")}</span>
-              </div>
-            )}
-
-            {!isLoading && !hasQueried && (
-              <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
-                <ServerIcon className="h-12 w-12 opacity-20" />
-                <p className="text-sm">{t("log_no_result")}</p>
-              </div>
-            )}
-
-            {!isLoading && hasQueried && logs.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 gap-2 text-muted-foreground">
-                <Info className="h-10 w-10 opacity-20" />
-                <p className="text-sm">No logs found for this query.</p>
-              </div>
-            )}
-
-            {!isLoading && logs.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
-                  {t("log_timeline")}
-                </p>
-                {logs.map((entry) => (
-                  <LogEntryRow key={entry.id} entry={entry} />
-                ))}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
       </div>
     </div>
   );

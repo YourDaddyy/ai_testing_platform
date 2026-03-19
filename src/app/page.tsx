@@ -11,7 +11,6 @@ import { InlineLogsTab } from "@/components/http-tool/InlineLogsTab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, Save, History, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   getRequestHistory,
@@ -24,8 +23,42 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { 
+  Popover, 
+  PopoverContent, 
+  PopoverTrigger 
+} from "@/components/ui/popover";
+import { 
+  Command, 
+  CommandEmpty, 
+  CommandGroup, 
+  CommandInput, 
+  CommandItem, 
+  CommandList 
+} from "@/components/ui/command";
+import {
+  InputGroup,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Badge } from "@/components/ui/badge";
 import { useHttpStore } from "@/store/useHttpStore";
 import { useConfigStore } from "@/store/useConfigStore";
+import { useAiStore } from "@/store/useAiStore";
+import { 
+  Send, 
+  Save, 
+  History, 
+  Sparkles, 
+  ChevronDown, 
+  Check, 
+  Tag, 
+  Plus, 
+  Trash2,
+  Globe,
+  Pencil
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
 
@@ -39,24 +72,30 @@ const DEFAULT_XML_BODY = `<?xml version="1.0" encoding="GBK"?>
   </Body>
 </Request>`;
 
-// Extract accept_id first, then fall back to tx_id and other fields
+// Prioritize technical tx_id/trace_id over business accept_id for log tracing
 function extractTxIdFromXml(xml: string): string | null {
   if (!xml) return null;
-  // 1. accept_id — highest priority
-  const acceptMatch = /<accept_id[^>]*>\s*([^<\s]+)\s*<\/accept_id>/i.exec(xml);
-  if (acceptMatch?.[1]?.trim()) return acceptMatch[1].trim();
-
-  // 2. tx_id / txId / transId / bssp_log / TRANS_CODE — fallback
+  
+  // 1. Technical identifiers (tx_id, transId, etc.) — higher signal for BSSP/TE logs
   const txPatterns = [
-    /<(?:tx_id|txId|transId|bssp_log|TRANS_CODE|ORDER_ID|SERIAL_NO|tx_serial_no)[^>]*>\s*([^<\s]+)\s*<\//i,
-    /txId=([A-Za-z0-9_-]+)/i,
-    /tx_id=([A-Za-z0-9_-]+)/i,
-    /accept_id=([A-Za-z0-9_-]+)/i,
+    /<(?:tx_id|txId|transId|bssp_log|TRANS_CODE|ORDER_ID|SERIAL_NO|tx_serial_no|tx_id_info)[^>]*>\s*([^<\s]+)\s*<\//i,
+    /txId[:=]\s*([A-Za-z0-9_-]+)/i,
+    /tx_id[:=]\s*([A-Za-z0-9_-]+)/i,
+    /transId[:=]\s*([A-Za-z0-9_-]+)/i,
   ];
+  
   for (const p of txPatterns) {
     const m = p.exec(xml);
     if (m?.[1]?.trim()) return m[1].trim();
   }
+
+  // 2. Business identifiers (accept_id) — fallback
+  const acceptMatch = /<(?:accept_id|acceptId|businessId)[^>]*>\s*([^<\s]+)\s*<\//i.exec(xml);
+  if (acceptMatch?.[1]?.trim()) return acceptMatch[1].trim();
+  
+  const acceptFallbackMatch = /accept_id=([A-Za-z0-9_-]+)/i.exec(xml);
+  if (acceptFallbackMatch?.[1]?.trim()) return acceptFallbackMatch[1].trim();
+
   return null;
 }
 
@@ -72,14 +111,6 @@ export default function HttpToolPage() {
     setResponse, setLoading, setError, setAutoLogQueryKey, setLeftTab, setRightTab,
     setHistory, setShowHistory
   } = useHttpStore();
-
-
-  // If URL is empty on mount, initialize it with the current environment's BSSP host (first node)
-  useEffect(() => {
-    if (!url && activeEnv?.hosts?.bssp?.[0]?.url) {
-      setUrl(`${activeEnv.hosts.bssp[0].url}/fcgi-bin/BSSP_SFC`);
-    }
-  }, [url, setUrl, activeEnv]);
 
   useEffect(() => {
     setHistory(getRequestHistory());
@@ -105,22 +136,32 @@ export default function HttpToolPage() {
       });
 
       const data = await res.json();
+      setResponse(data as HttpResponse);
+      setRightTab("response");
+
       if (!res.ok && data.error) {
         toast.error(`Proxy error: ${data.error}`);
         setError(data.error);
         return;
       }
-      setResponse(data as HttpResponse);
 
-      // Auto-trigger log queries using tx_id extracted from response, fallback to request
+      // Extract high-fidelity technical ID (tx_id) first, fallback to business (accept_id)
       const txId = extractTxIdFromXml(data.body || "") || extractTxIdFromXml(body);
       if (txId) {
         setAutoLogQueryKey(`${txId}__${Date.now()}`);
       }
     } catch (err: unknown) {
       const msg = (err as Error).message;
-      toast.error(`Request failed: ${msg}`);
       setError(msg);
+      setResponse({
+        status: 500,
+        statusText: "Request Failed",
+        headers: {},
+        body: `Local fetch error: ${msg}`,
+        duration: 0,
+        size: 0
+      });
+      setRightTab("response");
     } finally {
       setLoading(false);
     }
@@ -161,6 +202,30 @@ export default function HttpToolPage() {
     if (selectedId === id) setSelectedId(undefined);
   };
 
+  // URL Tag Management logic
+  const { commonUrls, addCommonUrl, removeCommonUrl, updateCommonUrl } = useHttpStore();
+  const [isUrlPopoverOpen, setIsUrlPopoverOpen] = useState(false);
+  const [isSavePopoverOpen, setIsSavePopoverOpen] = useState(false);
+  const [newUrlLabel, setNewUrlLabel] = useState("");
+
+  // Edit State
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+
+  const currentUrlLabel = commonUrls.find(u => u.url === url)?.label;
+
+  const handleAddUrl = () => {
+    if (!newUrlLabel.trim()) {
+      toast.error("请输入标签名称");
+      return;
+    }
+    addCommonUrl(newUrlLabel.trim(), url);
+    setNewUrlLabel("");
+    setIsSavePopoverOpen(false);
+    toast.success("URL 已收藏");
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       <div className="flex flex-col flex-1 overflow-hidden">
@@ -180,20 +245,171 @@ export default function HttpToolPage() {
             </SelectContent>
           </Select>
 
-          <Input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Enter request URL..."
-            className="flex-1 font-mono text-sm"
-            onKeyDown={(e) => e.key === "Enter" && sendRequest()}
-          />
+          <InputGroup className="flex-1">
+            <Popover open={isUrlPopoverOpen} onOpenChange={setIsUrlPopoverOpen}>
+              <PopoverTrigger 
+                render={
+                  <button className="flex items-center gap-1.5 px-2 hover:bg-muted/50 border-r text-muted-foreground transition-colors group h-full">
+                    <div className="flex items-center gap-1.5 max-w-[120px]">
+                      <Globe className="h-3.5 w-3.5 shrink-0" />
+                      {currentUrlLabel && (
+                        <Badge variant="secondary" className="px-1.5 py-0 h-5 text-[10px] font-bold bg-primary/10 text-primary border-none truncate">
+                          {currentUrlLabel}
+                        </Badge>
+                      )}
+                    </div>
+                    <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", isUrlPopoverOpen && "rotate-180")} />
+                  </button>
+                }
+              />
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="搜索已保存的 URL..." />
+                  <CommandList>
+                    <CommandEmpty>未找到匹配的 URL</CommandEmpty>
+                    <CommandGroup heading="常用 URL">
+                      {commonUrls.map((item) => (
+                        <CommandItem
+                          key={item.id}
+                          onSelect={() => {
+                            if (editingId === item.id) return;
+                            setUrl(item.url);
+                            setIsUrlPopoverOpen(false);
+                          }}
+                          className="flex items-center justify-between group py-2"
+                        >
+                          {editingId === item.id ? (
+                            <div className="flex flex-col gap-2 w-full p-1" onClick={(e) => e.stopPropagation()}>
+                              <Input 
+                                value={editLabel} 
+                                onChange={(e) => setEditLabel(e.target.value)}
+                                placeholder="标签名..."
+                                className="h-7 text-xs font-bold"
+                                autoFocus
+                              />
+                              <Input 
+                                value={editUrl} 
+                                onChange={(e) => setEditUrl(e.target.value)}
+                                placeholder="URL..."
+                                className="h-7 text-[10px] font-mono"
+                              />
+                              <div className="flex gap-2 justify-end">
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="h-6 px-2 text-[10px]"
+                                  onClick={() => setEditingId(null)}
+                                >
+                                  取消
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  className="h-6 px-2 text-[10px] font-bold"
+                                  onClick={() => {
+                                    updateCommonUrl(item.id, editLabel, editUrl);
+                                    setEditingId(null);
+                                    toast.success("已更新");
+                                  }}
+                                >
+                                  保存
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-xs">{item.label}</span>
+                                  {url === item.url && <Check className="h-3 w-3 text-primary" />}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground font-mono truncate">{item.url}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingId(item.id);
+                                    setEditLabel(item.label);
+                                    setEditUrl(item.url);
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeCommonUrl(item.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
 
-          <Button onClick={sendRequest} disabled={isLoading} className="gap-2 shrink-0">
+            <InputGroupInput
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="输入请求 URL..."
+              className="font-mono text-xs py-0 h-8"
+              onKeyDown={(e) => e.key === "Enter" && sendRequest()}
+            />
+
+            <Popover open={isSavePopoverOpen} onOpenChange={setIsSavePopoverOpen}>
+              <PopoverTrigger 
+                render={
+                  <button className="px-2 hover:bg-muted/50 border-l text-muted-foreground transition-colors group h-full" title="标签化该 URL">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                }
+              />
+              <PopoverContent className="w-80 p-3">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <h4 className="font-medium text-sm leading-none flex items-center gap-2">
+                      <Tag className="h-3.5 w-3.5" />
+                      标签化当前 URL
+                    </h4>
+                    <p className="text-xs text-muted-foreground">给这个地址起个名字吧（如：开发、生产）</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      id="label"
+                      placeholder="标签名称..."
+                      value={newUrlLabel}
+                      onChange={(e) => setNewUrlLabel(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddUrl()}
+                      autoFocus
+                    />
+                    <Button size="sm" className="h-8 text-xs font-bold" onClick={handleAddUrl}>
+                      保存
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </InputGroup>
+
+          <Button onClick={sendRequest} disabled={isLoading} className="gap-2 shrink-0 h-8 font-bold">
             <Send className="h-4 w-4" />
             发送
           </Button>
 
-          <Button variant="outline" onClick={handleSave} size="icon" title="Save Request">
+          <Button variant="outline" onClick={handleSave} size="icon" className="h-8 w-8" title="保存到历史记录">
             <Save className="h-4 w-4" />
           </Button>
 
@@ -272,12 +488,12 @@ export default function HttpToolPage() {
             {/* Tab bar */}
             <div className="flex items-center gap-1 px-3 pt-2 border-b shrink-0 flex-wrap">
               {([
-                ["response", "响应体"] as const,
                 ["resp-headers", "响应头"] as const,
+                ["response", "响应体"] as const,
                 ["bssp-log", "BSSP日志"] as const,
                 ["sac-log", "SAC日志"] as const,
                 ["te-log", "TE日志"] as const,
-                ["bop-log", "BOP日志"] as const,
+                ["cmc-log", "容器云日志"] as const,
               ]).map(([key, label]) => (
                 <button
                   key={key}
@@ -290,7 +506,7 @@ export default function HttpToolPage() {
                 >
                   {label}
                   {/* Green dot indicator when logs have been fetched */}
-                  {(key === "bssp-log" || key === "sac-log" || key === "te-log" || key === "bop-log") && autoLogQueryKey && (
+                  {(key === "bssp-log" || key === "sac-log" || key === "te-log" || key === "cmc-log") && autoLogQueryKey && (
                     <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
                   )}
                 </button>
@@ -302,7 +518,15 @@ export default function HttpToolPage() {
                   variant="ghost" 
                   size="sm" 
                   className="h-7 px-2 text-[11px] gap-1.5 font-bold text-violet-500 hover:text-violet-600 hover:bg-violet-500/10 transition-all group"
-                  onClick={() => router.push("/ai")}
+                  onClick={() => {
+                    if (autoLogQueryKey) {
+                      const id = autoLogQueryKey.split("__")[0];
+                      useAiStore.getState().setTargetTxId(id);
+                      router.push(`/ai?txId=${id}`);
+                    } else {
+                      router.push("/ai");
+                    }
+                  }}
                 >
                   <Sparkles className="h-3 w-3 transition-transform group-hover:scale-110" />
                   AI 深度全链路分析
@@ -367,14 +591,14 @@ export default function HttpToolPage() {
               />
             </div>
 
-            {/* BOP日志 — stays mounted */}
-            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "bop-log" ? "hidden" : ""}`}>
+            {/* 容器云日志 — stays mounted */}
+            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "cmc-log" ? "hidden" : ""}`}>
               <InlineLogsTab
-                source="bop"
-                sourceLabel="BOP"
+                source="cmc"
+                sourceLabel="容器云"
                 requestBody={body}
                 responseBody={response?.body}
-                hostConfigs={activeEnv?.hosts?.bop}
+                hostConfigs={activeEnv?.hosts?.cmc}
                 autoQueryKey={autoLogQueryKey}
               />
             </div>

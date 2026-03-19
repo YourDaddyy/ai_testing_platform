@@ -1,9 +1,11 @@
 node_modules
 .next
 .git
+.env
 .env.local
-.antigravity
-*.md
-Dockerfile
-.dockerignore
-package-lock.json
+*.bat
+*.sh
+*.zip
+*.tar
+_dist_staging
+docker

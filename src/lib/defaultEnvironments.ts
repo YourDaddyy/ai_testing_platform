@@ -23,7 +23,7 @@ export const defaultEnvironments: Environment[] = [
         { label: "TE-55", sshHost: "10.44.46.55", sshPort: 22, sshUsername: "bossbm1", sshPassword: "fmbs3_adm!" },
       ],
       bop: [
-        { label: "BOP-33", url: "http://10.47.202.33", sshHost: "10.47.202.33", sshPort: 22, sshUsername: "bossweb", sshPassword: "fmbs3_adm!" },
+        { label: "BOP-33", sshHost: "10.47.202.33", sshPort: 22, sshUsername: "bossweb", sshPassword: "fmbs3_adm!" },
       ],
     },
   },
@@ -44,7 +44,7 @@ export const defaultEnvironments: Environment[] = [
         { label: "TE-26", sshHost: "10.47.213.26", sshPort: 22, sshUsername: "bossbm1", sshPassword: "fmbs3_adm!" },
       ],
       bop: [
-        { label: "BOP-86", url: "http://10.45.117.86", sshHost: "10.45.117.86", sshPort: 22, sshUsername: "bossweb", sshPassword: "fmbs3_adm!" },
+        { label: "BOP-86", sshHost: "10.45.117.86", sshPort: 22, sshUsername: "bossweb", sshPassword: "fmbs3_adm!" },
       ],
     },
   },

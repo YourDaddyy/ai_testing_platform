@@ -92,13 +92,10 @@ export function AppHeader() {
 
           {/* Environment Switcher */}
           <DropdownMenu>
-            {/* @ts-expect-error Radix UI asChild type incompatibility with React 19 / newer TS */}
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 cursor-pointer hover:bg-muted px-3 h-8 rounded-md transition-colors border text-sm bg-background select-none outline-none">
-                <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-                <span className="font-semibold">{activeEnv?.name || "未知环境"}</span>
-                <span className="text-xs text-muted-foreground ml-1">▼</span>
-              </button>
+            <DropdownMenuTrigger className="flex items-center gap-2 cursor-pointer hover:bg-muted px-3 h-8 rounded-md transition-colors border text-sm bg-background select-none outline-none">
+              <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+              <span className="font-semibold">{activeEnv?.name || "未知环境"}</span>
+              <span className="text-xs text-muted-foreground ml-1">▼</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
               {environments.map((env) => (

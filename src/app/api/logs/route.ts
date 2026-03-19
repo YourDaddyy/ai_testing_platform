@@ -28,7 +28,7 @@ function getHostConfigs(source: string, envHosts: Record<string, any>): HostConf
       port: Number(o.sshPort) || 22,
       username: o.sshUsername || "root",
       password: o.sshPassword || "",
-      logPaths: svc?.logPaths ?? [],
+      logPaths: (o.logPaths && o.logPaths.length > 0) ? o.logPaths : (svc?.logPaths ?? []),
       label: o.label,
       encoding: svc?.encoding ?? "utf8",
       grepTemplate: svc?.grepTemplate,

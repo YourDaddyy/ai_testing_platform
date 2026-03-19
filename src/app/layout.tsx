@@ -35,7 +35,7 @@ export default function RootLayout({
           <AppSidebar />
           <div className="flex flex-col flex-1 h-screen overflow-hidden">
             <AppHeader />
-            <main className="flex-1 overflow-auto bg-background relative">
+            <main className="flex-1 overflow-hidden bg-background relative">
               {children}
             </main>
           </div>

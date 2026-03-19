@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useConfigStore, Environment } from "@/store/useConfigStore";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, Copy, Download, Loader2, Plus, Save, Trash2, Upload, Zap } from "lucide-react";
+import { ChevronDown, Copy, Download, Edit2, Loader2, Plus, Save, Trash2, Upload, Zap } from "lucide-react";
 import { toast } from "sonner";
 import {
   Card,
@@ -47,6 +47,8 @@ export default function ConfigPage() {
     addEnvironment,
     updateEnvironment,
     deleteEnvironment,
+    deleteServiceKey,
+    renameServiceKey,
     aiApiKey,
     setAiApiKey,
     aiModel,
@@ -65,6 +67,11 @@ export default function ConfigPage() {
   );
   const [expandedNodes, setExpandedNodes] = useState<string[]>([]);
   const [testingNodes, setTestingNodes] = useState<Record<string, boolean>>({});
+  const [newServiceName, setNewServiceName] = useState("");
+  const [editingServiceKey, setEditingServiceKey] = useState<string | null>(null);
+  const [editServiceValue, setEditServiceValue] = useState("");
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editNodeValue, setEditNodeValue] = useState("");
 
   const selectedEnv = environments.find((e) => e.id === selectedEnvId);
 
@@ -73,9 +80,9 @@ export default function ConfigPage() {
       id: `env-${Date.now()}`,
       name: "新环境",
       hosts: {
-        bssp: [{ url: "http://10.47.213.184:8080", label: "BSSP" }],
-        sac: [{ url: "http://10.47.213.26:8080", label: "SAC" }],
-        te: [{ url: "http://10.46.180.92:8089", label: "TE" }],
+        bssp: [{ sshHost: "10.47.213.184", label: "BSSP" }],
+        sac: [{ sshHost: "10.47.213.26", label: "SAC" }],
+        te: [{ sshHost: "10.46.180.92", label: "TE" }],
       },
     };
     addEnvironment(newEnv);
@@ -242,17 +249,42 @@ export default function ConfigPage() {
                     {environments.map((env) => (
                       <div
                         key={env.id}
-                        className={`flex items-center justify-between p-2 rounded-md text-sm cursor-pointer transition-colors ${
+                        className={cn(
+                          "flex items-center justify-between p-2 rounded-md text-sm cursor-pointer transition-all group/env-item relative mb-0.5",
                           selectedEnvId === env.id
-                            ? "bg-primary text-primary-foreground font-medium"
-                            : "hover:bg-muted"
-                        }`}
+                            ? "bg-primary text-primary-foreground font-medium shadow-sm"
+                            : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                        )}
                         onClick={() => setSelectedEnvId(env.id)}
                       >
-                        <span className="truncate">{env.name}</span>
-                        {activeEnvId === env.id && (
-                          <Badge variant="secondary" className="text-[10px] ml-1 px-1 h-4">默认</Badge>
-                        )}
+                        <div className="flex items-center gap-2 truncate flex-1 leading-none pt-0.5">
+                          <span className="truncate">{env.name}</span>
+                          {activeEnvId === env.id && (
+                            <Badge 
+                              variant={selectedEnvId === env.id ? "outline" : "secondary"} 
+                              className={cn(
+                                "text-[10px] px-1 h-3.5",
+                                selectedEnvId === env.id && "bg-primary-foreground/20 text-primary-foreground border-transparent"
+                              )}
+                            >
+                              默认
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-5 w-5 opacity-0 group-hover/env-item:opacity-100 transition-opacity shrink-0 ml-1",
+                            selectedEnvId === env.id ? "text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground" : "text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteEnv(env.id);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     ))}
                   </CardContent>
@@ -327,14 +359,6 @@ export default function ConfigPage() {
                             >
                               <Copy className="h-3.5 w-3.5 mr-1.5" /> 复制
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-2 text-destructive hover:bg-destructive/10 border-destructive/20"
-                              onClick={() => handleDeleteEnv(selectedEnv.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> 删除
-                            </Button>
                           </div>
                         </div>
                       </CardHeader>
@@ -353,37 +377,113 @@ export default function ConfigPage() {
                         </div>
 
                         <div className="space-y-6 pt-2">
-                          <h4 className="text-sm font-semibold border-b pb-2 flex items-center justify-between">
-                            主机节点与 SSH 配置
-                            <span className="text-[10px] font-normal text-muted-foreground uppercase">支持多节点并行聚合</span>
-                          </h4>
-                          
-                          {(["bssp", "sac", "cmc", "te", "bop"] as const).map((hostKey) => {
+                          <div className="flex items-center justify-between border-b pb-2 gap-4">
+                            <h4 className="text-sm font-semibold shrink-0">主机节点与 SSH 配置</h4>
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              <span className="text-[10px] font-normal text-muted-foreground uppercase hidden md:inline">支持多节点并行聚合</span>
+                              <Input
+                                value={newServiceName}
+                                onChange={(e) => setNewServiceName(e.target.value)}
+                                placeholder="新服务名, 如 oracle"
+                                className="h-6 text-xs w-28 font-mono"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && newServiceName.trim()) {
+                                    const key = newServiceName.trim().toLowerCase().replace(/\s+/g, "_");
+                                    updateEnvironment(selectedEnv.id, { hosts: { ...selectedEnv.hosts, [key]: [] } });
+                                    setNewServiceName("");
+                                  }
+                                }}
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 px-2 text-[10px] gap-1 border-dashed hover:bg-primary/5 hover:text-primary"
+                                onClick={() => {
+                                  if (!newServiceName.trim()) return;
+                                  const key = newServiceName.trim().toLowerCase().replace(/\s+/g, "_");
+                                  updateEnvironment(selectedEnv.id, { hosts: { ...selectedEnv.hosts, [key]: [] } });
+                                  setNewServiceName("");
+                                }}
+                              >
+                                <Plus className="h-3 w-3" /> 添加服务
+                              </Button>
+                            </div>
+                          </div>
+
+                          {Object.keys(selectedEnv.hosts).map((hostKey) => {
                             const nodes = selectedEnv.hosts[hostKey] || [];
                             
                             return (
                               <div key={hostKey} className="border rounded-lg bg-card overflow-hidden shadow-sm">
-                                <div className="px-4 py-2 bg-muted/30 border-b flex items-center justify-between">
+                                <div className="px-4 py-2 bg-muted/30 border-b flex items-center justify-between group/service-head">
                                   <div className="flex items-center gap-2">
-                                    <h5 className="text-sm font-semibold capitalize text-foreground flex items-center gap-2">
-                                      {hostKey} 服务
-                                    </h5>
+                                    {editingServiceKey === hostKey ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          value={editServiceValue}
+                                          onChange={(e) => setEditServiceValue(e.target.value)}
+                                          onBlur={() => {
+                                            if (editServiceValue && editServiceValue !== hostKey) {
+                                              renameServiceKey(selectedEnv.id, hostKey, editServiceValue);
+                                            }
+                                            setEditingServiceKey(null);
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              if (editServiceValue && editServiceValue !== hostKey) {
+                                                renameServiceKey(selectedEnv.id, hostKey, editServiceValue);
+                                              }
+                                              setEditingServiceKey(null);
+                                            }
+                                            if (e.key === "Escape") setEditingServiceKey(null);
+                                          }}
+                                          autoFocus
+                                          className="h-6 py-0 px-2 text-xs font-semibold w-32 font-mono"
+                                        />
+                                        <span className="text-xs font-semibold text-muted-foreground">服务</span>
+                                      </div>
+                                    ) : (
+                                      <h5 
+                                        className="text-sm font-semibold capitalize text-foreground flex items-center gap-2 cursor-pointer hover:text-primary transition-colors pr-8 relative"
+                                        onClick={() => {
+                                          setEditingServiceKey(hostKey);
+                                          setEditServiceValue(hostKey);
+                                        }}
+                                      >
+                                        {hostKey} 服务
+                                        <Edit2 className="h-3 w-3 opacity-0 group-hover/service-head:opacity-100 transition-opacity absolute right-0" />
+                                      </h5>
+                                    )}
                                   </div>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-6 px-2 text-[10px] gap-1 border-dashed hover:bg-primary/5 hover:text-primary transition-colors"
-                                    onClick={() => {
-                                      const newNodes = [...nodes, { label: `Node-${nodes.length + 1}`, url: "", sshHost: "", sshUsername: "" }];
-                                      const newNodeId = `${hostKey}-${nodes.length}`;
-                                      setExpandedNodes(prev => [...prev, newNodeId]);
-                                      updateEnvironment(selectedEnv.id, {
-                                        hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
-                                      });
-                                    }}
-                                  >
-                                    <Plus className="h-3 w-3" /> 添加节点
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 px-2 text-[10px] gap-1 border-dashed hover:bg-primary/5 hover:text-primary transition-colors"
+                                      onClick={() => {
+                                        const newNodes = [...nodes, { label: `Node-${nodes.length + 1}`, url: "", sshHost: "", sshUsername: "" }];
+                                        const newNodeId = `${hostKey}-${nodes.length}`;
+                                        setExpandedNodes(prev => [...prev, newNodeId]);
+                                        updateEnvironment(selectedEnv.id, {
+                                          hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                        });
+                                      }}
+                                    >
+                                      <Plus className="h-3 w-3" /> 添加节点
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6 text-destructive hover:bg-destructive/10 hover:text-destructive opacity-0 group-hover/service-head:opacity-100 transition-opacity"
+                                      onClick={() => {
+                                        if (confirm(`确定删除 ${hostKey.toUpperCase()} 服务类别？这将清除该服务的所有节点配置。`)) {
+                                          deleteServiceKey(selectedEnv.id, hostKey);
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
                                 </div>
                                 
                                 <div className="space-y-3">
@@ -414,17 +514,49 @@ export default function ConfigPage() {
                                             )}>
                                               <ChevronDown className="h-3.5 w-3.5" />
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-sm font-semibold">{node.label || "未命名节点"}</span>
+                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                              {editingNodeId === nodeId ? (
+                                                <Input
+                                                  value={editNodeValue}
+                                                  onChange={(e) => setEditNodeValue(e.target.value)}
+                                                  onBlur={() => {
+                                                    const newNodes = [...nodes];
+                                                    newNodes[nodeIdx] = { ...node, label: editNodeValue };
+                                                    updateEnvironment(selectedEnv.id, {
+                                                      hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                                    });
+                                                    setEditingNodeId(null);
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === "Enter") {
+                                                      const newNodes = [...nodes];
+                                                      newNodes[nodeIdx] = { ...node, label: editNodeValue };
+                                                      updateEnvironment(selectedEnv.id, {
+                                                        hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                                      });
+                                                      setEditingNodeId(null);
+                                                    }
+                                                    if (e.key === "Escape") setEditingNodeId(null);
+                                                  }}
+                                                  autoFocus
+                                                  className="h-6 py-0 px-2 text-xs font-semibold w-32 border-primary/50 focus:ring-1 focus:ring-primary"
+                                                />
+                                              ) : (
+                                                <span 
+                                                  className="text-sm font-semibold hover:text-primary transition-colors cursor-text"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEditingNodeId(nodeId);
+                                                    setEditNodeValue(node.label || "");
+                                                  }}
+                                                >
+                                                  {node.label || "未命名节点"}
+                                                </span>
+                                              )}
                                               {node.sshHost && (
                                                 <Badge variant="secondary" className="text-[10px] py-0 h-4 font-mono font-normal opacity-70">
                                                   {node.sshHost}
                                                 </Badge>
-                                              )}
-                                              {!isExpanded && node.url && (
-                                                <span className="text-[10px] text-muted-foreground truncate max-w-[150px] font-mono">
-                                                  {node.url}
-                                                </span>
                                               )}
                                             </div>
                                           </div>
@@ -447,65 +579,29 @@ export default function ConfigPage() {
                                               )}
                                               测试连接
                                             </Button>
-                                            {nodes.length > 1 && (
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/node-head:opacity-100 transition-opacity"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  const newNodes = nodes.filter((_, i) => i !== nodeIdx);
-                                                  updateEnvironment(selectedEnv.id, {
-                                                    hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
-                                                  });
-                                                }}
-                                              >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                              </Button>
-                                            )}
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/node-head:opacity-100 transition-opacity"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const newNodes = nodes.filter((_, i) => i !== nodeIdx);
+                                                updateEnvironment(selectedEnv.id, {
+                                                  hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                                });
+                                              }}
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
                                           </div>
                                         </div>
 
                                         {/* Collapsible Body */}
                                         <div className={cn(
                                           "transition-all duration-300 ease-in-out",
-                                          isExpanded ? "max-h-[500px] opacity-100 border-t border-dashed" : "max-h-0 opacity-0 pointer-events-none"
+                                          isExpanded ? "max-h-[1000px] opacity-100 border-t border-dashed" : "max-h-0 opacity-0 pointer-events-none"
                                         )}>
                                           <div className="p-4 space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                              <div className="space-y-1.5">
-                                                <label className="text-[10px] font-medium uppercase text-muted-foreground flex items-center gap-1">
-                                                  节点标签 <span className="text-red-500/50">*</span>
-                                                </label>
-                                                <Input
-                                                  value={node.label || ""}
-                                                  placeholder="如: BM / CS"
-                                                  onChange={(e) => {
-                                                    const newNodes = [...nodes];
-                                                    newNodes[nodeIdx] = { ...node, label: e.target.value };
-                                                    updateEnvironment(selectedEnv.id, {
-                                                      hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
-                                                    });
-                                                  }}
-                                                  className="font-medium text-xs h-8 bg-background/50 focus:bg-background transition-colors"
-                                                />
-                                              </div>
-                                              <div className="space-y-1.5">
-                                                <label className="text-[10px] font-medium uppercase text-muted-foreground">HTTP URL (API 访问地址)</label>
-                                                <Input
-                                                  value={node.url || ""}
-                                                  placeholder="http://..."
-                                                  onChange={(e) => {
-                                                    const newNodes = [...nodes];
-                                                    newNodes[nodeIdx] = { ...node, url: e.target.value };
-                                                    updateEnvironment(selectedEnv.id, {
-                                                      hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
-                                                    });
-                                                  }}
-                                                  className="font-mono text-xs h-8 bg-background/50 focus:bg-background transition-colors"
-                                                />
-                                              </div>
-                                            </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1 border-t border-dashed mt-2">
                                               <div className="space-y-1.5">
@@ -624,6 +720,73 @@ export default function ConfigPage() {
                                                   }}
                                                   className="font-mono text-xs h-8 bg-background/50 focus:bg-background transition-colors"
                                                 />
+                                              </div>
+                                            </div>
+
+                                            {/* Log Paths */}
+                                            <div className="pt-3 border-t border-dashed mt-3">
+                                              <div className="flex items-center justify-between mb-2">
+                                                <label className="text-[10px] font-medium uppercase text-muted-foreground">
+                                                  日志路径 <span className="normal-case font-normal opacity-60">(覆盖默认路径)</span>
+                                                </label>
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="h-5 px-2 text-[10px] gap-1 border-dashed"
+                                                  onClick={() => {
+                                                    const newNodes = [...nodes];
+                                                    newNodes[nodeIdx] = {
+                                                      ...node,
+                                                      logPaths: [...(node.logPaths || []), ""],
+                                                    };
+                                                    updateEnvironment(selectedEnv.id, {
+                                                      hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                                    });
+                                                  }}
+                                                >
+                                                  <Plus className="h-3 w-3" /> 添加路径
+                                                </Button>
+                                              </div>
+                                              <div className="space-y-1.5">
+                                                {(node.logPaths || []).length === 0 ? (
+                                                  <p className="text-[10px] text-muted-foreground italic">
+                                                    未设置自定义路径，将使用服务默认路径
+                                                  </p>
+                                                ) : (
+                                                  (node.logPaths || []).map((logPath, pathIdx) => (
+                                                    <div key={pathIdx} className="flex gap-1.5 items-center">
+                                                      <Input
+                                                        value={logPath}
+                                                        onChange={(e) => {
+                                                          const newNodes = [...nodes];
+                                                          const paths = [...(newNodes[nodeIdx].logPaths || [])];
+                                                          paths[pathIdx] = e.target.value;
+                                                          newNodes[nodeIdx] = { ...newNodes[nodeIdx], logPaths: paths };
+                                                          updateEnvironment(selectedEnv.id, {
+                                                            hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                                          });
+                                                        }}
+                                                        placeholder="/path/to/log/file.log 或 /dir/log*"
+                                                        className="flex-1 font-mono text-xs h-7 bg-background/50"
+                                                      />
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 shrink-0 text-destructive hover:bg-destructive/10"
+                                                        onClick={() => {
+                                                          const newNodes = [...nodes];
+                                                          const paths = (newNodes[nodeIdx].logPaths || []).filter((_, i) => i !== pathIdx);
+                                                          newNodes[nodeIdx] = { ...newNodes[nodeIdx], logPaths: paths };
+                                                          updateEnvironment(selectedEnv.id, {
+                                                            hosts: { ...selectedEnv.hosts, [hostKey]: newNodes }
+                                                          });
+                                                        }}
+                                                      >
+                                                        <Trash2 className="h-3 w-3" />
+                                                      </Button>
+                                                    </div>
+                                                  ))
+                                                )}
                                               </div>
                                             </div>
                                           </div>

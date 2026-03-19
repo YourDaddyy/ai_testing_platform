@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { buildAILogContext } from "@/lib/logProcessor";
+import { LogEntry } from "../logs/route";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,29 +15,44 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Missing API key. Please configure it in Settings or set ANTHROPIC_AUTH_TOKEN." }, { status: 400 });
     }
 
-    // Build context string from logs
-    const logContext = Object.entries(logs as Record<string, Array<{ level: string; message: string; raw: string }>>)
-      .map(([src, entries]) => {
-        if (!entries?.length) return null;
-        const lines = entries.map(e => `[${e.level}] ${e.raw.slice(0, 600)}`).join("\n");
-        return `\n=== ${src.toUpperCase()} 日志 ===\n${lines}`;
-      })
-      .filter(Boolean)
-      .join("\n");
+    // Build context string from logs using the optimized Log Cleaning Engine
+    // Flatten and sort by timestamp to match frontend timeline indexing
+    const rawLogs = logs as Record<string, LogEntry[]>;
+    const flattenedLogs = Object.values(rawLogs)
+      .flat()
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    const systemPrompt = `你是一个高级的CRM系统后端日志分析专家，专门负责分析 BOP/BSSP/SAC/TE 电信系统的业务日志，排查接口调用链中的问题。
-你擅长：
-- 从请求/响应报文和日志中定位接口调用失败的根本原因
-- 识别数据库错误(如ORA-xxxxx)、SAP接口错误、超时等
-- 分析事务流水(txId/accept_id)的完整调用链路
-- 以简洁专业的中文输出分析结论，用Markdown格式排版
+    const logContext = buildAILogContext(flattenedLogs);
 
-请系统地分析提供的上下文，格式化输出以下内容：
-1. **问题总结** (1-2句)
-2. **调用链路追踪** (分析 BOP → BSSP → SAC → TE 的流转，标记每个节点状态)
-3. **根本原因** (重点)
-4. **关键日志证据** (用\`代码块\`引用关键日志行)
-5. **建议处理方式**`;
+    const systemPrompt = `你是一个专业的 CRM 系统技术支持专家，擅长通过分析系统日志、请求报文和响应报文来定位复杂的业务故障。
+
+当用户提供日志和报文时，请按以下结构输出分析报告：
+
+1. **故障初步结论 (Problem Summary)**: 
+   - 用一句话描述发生了什么问题（如：下单接口返回互斥错误）。
+   - **可视化调用链**: 请使用 Mermaid 流程图描述涉及的系统调用关系，并用红色标出最后出现故障或报错的节点。
+   - **Mermaid 规范 (必须严格遵守)**: 
+     1. 节点标签必须使用双引号包裹，例如: BSSP["BSSP 核心"]。
+     2. 避免在标签中使用括号、单引号或特殊符号。
+     3. 失败点示例: style BSSP fill:#f96,stroke:#333。
+     \`\`\`mermaid
+     graph LR
+       BOP["BOP 前端"] --> BSSP["BSSP 核心"]
+       BSSP -- "失败" --> SAC["SAC 鉴权"]
+       style BSSP fill:#f96,stroke:#333
+     \`\`\`
+
+2. **核心证据链 (Evidence & Analysis)**:
+   - 详细说明定位过程。
+   - **关键规则**: 提供的日志每行都有一个索引号(如 [#12])。**你必须**在引用任何日志证据时，使用 \`[Log #12]\` 的格式引用。点击该引用应能直接跳转到左侧对应日志。例如: "系统在 [#45] 行记录了数据库超时，这直接导致了 [#46] 行的业务回滚。"
+
+3. **根本原因分析 (Root Cause)**:
+   - 深入分析导致问题的代码逻辑、配置问题或第三方依赖问题。
+
+4. **建议修复方案 (Recommendations)**:
+   - 给出具体的修复步骤、参数调整建议或进一步排查方案。
+
+请保持专业、简洁且以客观证据为准。`;
 
     const userContent = `
 ## 请求报文

@@ -151,6 +151,8 @@ export interface InlineLogsTabProps {
   hostConfigs?: HostCredentials[];
   /** When set to a non-empty string, automatically triggers a log fetch */
   autoQueryKey?: string;
+  hideControls?: boolean;
+  hideEmpty?: boolean;
 }
 
 const DEMO_LOGS: LogEntry[] = [
@@ -191,6 +193,8 @@ export function InlineLogsTab({
   responseBody = "",
   hostConfigs,
   autoQueryKey,
+  hideControls = false,
+  hideEmpty = false,
 }: InlineLogsTabProps) {
   const setStoreLogs = useLogStore((state) => state.setLogs);
   const logs = useLogStore((state) => state.logsBySource[source] || EMPTY_LOGS);
@@ -295,30 +299,34 @@ export function InlineLogsTab({
     {} as Record<string, number>
   );
 
+  if (hideEmpty && queried && logs.length === 0) return null;
+
   return (
-    <div className="flex flex-col h-full gap-2 pt-1">
+    <div className="flex flex-col h-full gap-2 pt-1 font-sans">
       {/* Query bar */}
-      <div className="flex items-center gap-2 shrink-0">
-        <input
-          className="flex-1 h-7 px-2 text-xs font-mono rounded border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-          placeholder={autoTxId ? `自动提取: ${autoTxId}` : "输入流水号或接口名..."}
-          value={txId}
-          onChange={(e) => handleTxIdChange(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && fetchLogs()}
-        />
-        <Button
-          size="sm"
-          disabled={loading}
-          onClick={() => fetchLogs()}
-          className="h-7 px-2 text-xs gap-1"
-        >
-          <Search className="w-3 h-3" />
-          {loading ? "Searching..." : "查询"}
-        </Button>
-      </div>
+      {!hideControls && (
+        <div className="flex items-center gap-2 shrink-0">
+          <input
+            className="flex-1 h-7 px-2 text-xs font-mono rounded border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder={autoTxId ? `自动提取: ${autoTxId}` : "输入流水号或接口名..."}
+            value={txId}
+            onChange={(e) => handleTxIdChange(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && fetchLogs()}
+          />
+          <Button
+            size="sm"
+            disabled={loading}
+            onClick={() => fetchLogs()}
+            className="h-7 px-2 text-xs gap-1"
+          >
+            <Search className="w-3 h-3" />
+            {loading ? "Searching..." : "查询"}
+          </Button>
+        </div>
+      )}
 
       {/* Stats bar */}
-      {queried && !loading && (
+      {(!hideControls && queried && !loading) && (
         <div className="flex items-center gap-2 text-xs shrink-0 flex-wrap">
           <span className="text-muted-foreground">
             共 <span className="font-bold text-foreground">{logs.length}</span> 条

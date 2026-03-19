@@ -3,11 +3,11 @@ import { defaultEnvironments } from "../lib/defaultEnvironments";
 
 export interface HostCredentials {
   label?: string;
-  url?: string;
   sshHost?: string;
   sshPort?: number;
   sshUsername?: string;
   sshPassword?: string;
+  logPaths?: string[];
 }
 
 export interface Environment {
@@ -42,6 +42,8 @@ interface ConfigState {
   setAiBaseUrl: (url: string) => void;
   resetToDefaults: () => void;
   importEnvironments: (envs: Environment[]) => void;
+  deleteServiceKey: (envId: string, key: string) => void;
+  renameServiceKey: (envId: string, oldKey: string, newKey: string) => void;
 }
 
 const getInitialEnvironments = () =>
@@ -142,6 +144,29 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
 
   importEnvironments: (envs) => {
     set({ environments: envs, activeEnvId: envs[0]?.id || defaultEnvironments[0].id });
+    get().saveConfig();
+  },
+
+  deleteServiceKey: (envId, key) => {
+    set((state) => ({
+      environments: state.environments.map((e) => {
+        if (e.id !== envId) return e;
+        const { [key]: _removed, ...rest } = e.hosts;
+        return { ...e, hosts: rest };
+      }),
+    }));
+    get().saveConfig();
+  },
+
+  renameServiceKey: (envId, oldKey, newKey) => {
+    set((state) => ({
+      environments: state.environments.map((e) => {
+        if (e.id !== envId) return e;
+        const nodes = e.hosts[oldKey] || [];
+        const { [oldKey]: _removed, ...rest } = e.hosts;
+        return { ...e, hosts: { ...rest, [newKey]: nodes } };
+      }),
+    }));
     get().saveConfig();
   },
 }));

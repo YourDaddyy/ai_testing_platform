@@ -4,9 +4,9 @@ An AI-powered log analysis tool for distributed CRM systems. Search logs across 
 
 ## Teammate Setup
 
-1. Unzip `crm-ai-platform-dist.zip`
-2. Copy `.env.example` → `.env.local` and fill in your `ANTHROPIC_API_KEY` (optionally set `CHROME_PATH`)
-3. Double-click `start-app.bat` — Chrome opens automatically in ~5 seconds
+1. Unzip the distribution package
+2. Copy `.env.example` → `.env.local` and fill in your `ANTHROPIC_API_KEY`
+3. Double-click `scripts/runtime/start-app.bat` — Chrome opens automatically in ~5 seconds
 
 > No build step needed. The package includes a pre-built server.
 
@@ -43,26 +43,28 @@ CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
 ## Production (Windows)
 
 **Start:**
-```
-start-app.bat
+
+```powershell
+./scripts/runtime/start-app.bat
 ```
 
 **Stop:**
-```
-stop.bat
+
+```powershell
+./scripts/runtime/stop.bat
 ```
 
 **Package for distribution:**
+
+```powershell
+./scripts/build/pack.bat
 ```
-pack.bat
-```
-Produces `crm-ai-platform-dist.zip` with the pre-built standalone included.
 
 ## Production (Linux / Mac)
 
 ```bash
-chmod +x start-app.sh
-./start-app.sh
+chmod +x scripts/runtime/start-app.sh
+./scripts/runtime/start-app.sh
 ```
 
 ## Adding or Changing Log Search Patterns
@@ -81,16 +83,14 @@ To add a new environment or server node, edit `src/lib/defaultEnvironments.ts` �
 
 ## Project Structure
 
-```
-src/
-  app/          # Next.js pages and API routes
-  components/   # UI components (log viewer, HTTP tool, config panel)
-  store/        # Global state (Zustand)
-  lib/
-    defaultEnvironments.ts  # SSH connection configs per environment
-    serviceLogConfigs.ts    # Log search patterns per service type
-    mergedHosts.ts          # Host picker reference list for config UI
-docker/         # Dockerfile and .dockerignore
+```text
+src/            # Next.js pages, API routes, and logic
+scripts/        # Management scripts
+  runtime/      # Start/Stop app and docker
+  build/        # Packaging and deployment
+docker/         # Dockerfile, compose, and environment configs
+public/         # Static assets
+config.json     # Persisted environment & host configurations
 ```
 
 ## Tech Stack
