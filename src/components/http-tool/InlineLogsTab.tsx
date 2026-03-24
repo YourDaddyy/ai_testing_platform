@@ -197,11 +197,12 @@ export function InlineLogsTab({
   hideEmpty = false,
 }: InlineLogsTabProps) {
   const setStoreLogs = useLogStore((state) => state.setLogs);
-  const logs = useLogStore((state) => state.logsBySource[source] || EMPTY_LOGS);
+  const logs = useLogStore((state) => state.getLogsBySource(source));
   
   const queried = useLogStore((state) => state.queriedBySource[source] || false);
   const txId = useLogStore((state) => state.txIdBySource[source] || "");
   const errorMsg = useLogStore((state) => state.errorMsgBySource[source] || "");
+  const serverErrors = useLogStore((state) => state.getServerErrorsBySource(source));
   
   const setQueried = useLogStore((state) => state.setQueried);
   const setTxId = useLogStore((state) => state.setTxId);
@@ -236,13 +237,13 @@ export function InlineLogsTab({
       });
       const data = await res.json();
       if (data.error) {
-        setStoreLogs(source, []);
+        setStoreLogs(source, [], []);
         setErrorMsg(source, data.error);
-      } else if (!data.logs?.length) {
-        setStoreLogs(source, []);
-        setErrorMsg(source, "未找到匹配的日志");
       } else {
-        setStoreLogs(source, data.logs);
+        setStoreLogs(source, data.logs || [], data.errors || []);
+        if (!data.logs?.length && !data.errors?.length) {
+          setErrorMsg(source, "未找到匹配的日志");
+        }
       }
     } catch (err: any) {
       setStoreLogs(source, []);
@@ -338,10 +339,15 @@ export function InlineLogsTab({
             );
           })}
           {errorMsg && (
-            <span className="text-amber-600 dark:text-yellow-400 text-[10px] flex items-center gap-1">
-              ⚠ {errorMsg}
+            <span className="text-red-500 text-[10px] flex items-center gap-1 font-bold">
+              <AlertCircle className="w-3 h-3" /> {errorMsg}
             </span>
           )}
+          {serverErrors.map((msg, idx) => (
+            <span key={idx} className="text-amber-600 dark:text-yellow-400 text-[10px] flex items-center gap-1 font-medium bg-amber-500/5 px-1.5 py-0.5 rounded border border-amber-500/10">
+              <AlertTriangle className="w-3 h-3" /> {msg}
+            </span>
+          ))}
           <div className="flex-1" />
           {logs.length > 0 && (
             <>

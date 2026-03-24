@@ -10,6 +10,15 @@ export interface HostCredentials {
   logPaths?: string[];
 }
 
+export interface ServiceScript {
+  id: string;
+  label: string;
+  path: string;
+  description?: string;
+  defaultParams?: string[];
+  serviceType?: string; // e.g. 'bssp', 'te', or 'general'
+}
+
 export interface Environment {
   id: string;
   name: string;
@@ -19,8 +28,10 @@ export interface Environment {
     cmc?: HostCredentials[];
     te?: HostCredentials[];
     bop?: HostCredentials[];
+    cs?: HostCredentials[];
     [key: string]: HostCredentials[] | undefined;
   };
+  scripts?: ServiceScript[];
 }
 
 interface ConfigState {
@@ -30,6 +41,14 @@ interface ConfigState {
   aiModel: string;
   aiBaseUrl: string;
   isLoaded: boolean;
+  
+  // Remote Control Page Persistence
+  remoteControlState: {
+    lastEnvId: string | null;
+    lastServiceGroup: string | null;
+    lastScriptId: string | null;
+    lastParams: string[];
+  };
 
   loadConfig: () => Promise<void>;
   saveConfig: () => Promise<void>;
@@ -44,6 +63,19 @@ interface ConfigState {
   importEnvironments: (envs: Environment[]) => void;
   deleteServiceKey: (envId: string, key: string) => void;
   renameServiceKey: (envId: string, oldKey: string, newKey: string) => void;
+  
+  // New actions for Service Scripts
+  addServiceScript: (envId: string, script: Omit<ServiceScript, "id">) => void;
+  updateServiceScript: (envId: string, scriptId: string, partial: Partial<ServiceScript>) => void;
+  deleteServiceScript: (envId: string, scriptId: string) => void;
+  
+  // New actions for HTTP URLs
+  commonUrls: Array<{ id: string; label: string; url: string }>;
+  addCommonUrl: (label: string, url: string) => void;
+  removeCommonUrl: (id: string) => void;
+  updateCommonUrl: (id: string, label: string, url: string) => void;
+
+  setRemoteControlState: (state: Partial<ConfigState["remoteControlState"]>) => void;
 }
 
 const getInitialEnvironments = () =>
@@ -55,6 +87,17 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   aiApiKey: "",
   aiModel: "claude-3-5-sonnet-20241022",
   aiBaseUrl: "https://api.anthropic.com/v1/messages",
+  commonUrls: [
+    { id: "1", label: "生产环境", url: "http://10.47.213.184:8080/fcgi-bin/BSSP_SFC" },
+    { id: "2", label: "测试环境", url: "http://10.47.211.12:8080/fcgi-bin/BSSP_SFC" },
+    { id: "3", label: "回归环境", url: "http://10.47.213.184:8081/fcgi-bin/BSSP_SFC" },
+  ],
+  remoteControlState: {
+    lastEnvId: null,
+    lastServiceGroup: null,
+    lastScriptId: null,
+    lastParams: [],
+  },
   isLoaded: false,
 
   loadConfig: async () => {
@@ -68,6 +111,17 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
           aiApiKey: data.aiApiKey ?? "",
           aiModel: data.aiModel ?? "claude-3-5-sonnet-20241022",
           aiBaseUrl: data.aiBaseUrl ?? "https://api.anthropic.com/v1/messages",
+          commonUrls: data.commonUrls ?? [
+            { id: "1", label: "生产环境", url: "http://10.47.213.184:8080/fcgi-bin/BSSP_SFC" },
+            { id: "2", label: "测试环境", url: "http://10.47.211.12:8080/fcgi-bin/BSSP_SFC" },
+            { id: "3", label: "回归环境", url: "http://10.47.213.184:8081/fcgi-bin/BSSP_SFC" },
+          ],
+          remoteControlState: data.remoteControlState ?? {
+            lastEnvId: null,
+            lastServiceGroup: null,
+            lastScriptId: null,
+            lastParams: [],
+          },
           isLoaded: true,
         });
       } else {
@@ -79,12 +133,23 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   },
 
   saveConfig: async () => {
-    const { environments, activeEnvId, aiApiKey, aiModel, aiBaseUrl } = get();
+    const { isLoaded, environments, activeEnvId, aiApiKey, aiModel, aiBaseUrl, commonUrls } = get();
+    // Safety guard: Don't save if the store hasn't finished loading yet (prevents accidental wipes)
+    if (!isLoaded) return;
+    
     try {
       await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ environments, activeEnvId, aiApiKey, aiModel, aiBaseUrl }),
+        body: JSON.stringify({ 
+          environments, 
+          activeEnvId, 
+          aiApiKey, 
+          aiModel, 
+          aiBaseUrl, 
+          commonUrls,
+          remoteControlState: get().remoteControlState
+        }),
       });
     } catch (err) {
       console.error("Failed to save config:", err);
@@ -166,6 +231,81 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
         const { [oldKey]: _removed, ...rest } = e.hosts;
         return { ...e, hosts: { ...rest, [newKey]: nodes } };
       }),
+    }));
+    get().saveConfig();
+  },
+
+  addCommonUrl: (label, url) => {
+    set((state) => ({
+      commonUrls: [...state.commonUrls, { id: Math.random().toString(36).substr(2, 9), label, url }]
+    }));
+    get().saveConfig();
+  },
+
+  removeCommonUrl: (id) => {
+    set((state) => ({
+      commonUrls: state.commonUrls.filter(u => u.id !== id)
+    }));
+    get().saveConfig();
+  },
+
+  updateCommonUrl: (id, label, url) => {
+    set((state) => ({
+      commonUrls: state.commonUrls.map(u => u.id === id ? { ...u, label, url } : u)
+    }));
+    get().saveConfig();
+  },
+
+  addServiceScript: (envId, script) => {
+    set((state) => ({
+      environments: state.environments.map((e) =>
+        e.id === envId
+          ? {
+              ...e,
+              scripts: [
+                ...(e.scripts || []),
+                { ...script, id: Math.random().toString(36).substr(2, 9) },
+              ],
+            }
+          : e
+      ),
+    }));
+    get().saveConfig();
+  },
+
+  updateServiceScript: (envId, scriptId, partial) => {
+    set((state) => ({
+      environments: state.environments.map((e) =>
+        e.id === envId
+          ? {
+              ...e,
+              scripts: (e.scripts || []).map((s) =>
+                s.id === scriptId ? { ...s, ...partial } : s
+              ),
+            }
+          : e
+      ),
+    }));
+    get().saveConfig();
+  },
+
+  deleteServiceScript: (envId, scriptId) => {
+    set((state) => ({
+      environments: state.environments.map((e) =>
+        e.id === envId
+          ? {
+              ...e,
+              scripts: (e.scripts || []).filter((s) => s.id !== scriptId),
+            }
+          : e
+      ),
+    }));
+    get().saveConfig();
+  },
+
+  setRemoteControlState: (partial) => {
+    set((state) => ({
+      remoteControlState: { ...state.remoteControlState, ...partial }
     }));
     get().saveConfig();
   },

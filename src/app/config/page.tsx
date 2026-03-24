@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useConfigStore, Environment } from "@/store/useConfigStore";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, Copy, Download, Edit2, Loader2, Plus, Save, Trash2, Upload, Zap } from "lucide-react";
+import { ChevronDown, Copy, Download, Edit2, Eye, EyeOff, Loader2, Plus, Save, Terminal, Trash2, Upload, Zap } from "lucide-react";
 import { toast } from "sonner";
 import {
   Card,
@@ -58,7 +58,10 @@ export default function ConfigPage() {
     activeEnvId,
     setActiveEnvId,
     resetToDefaults,
-    importEnvironments
+    importEnvironments,
+    addServiceScript,
+    updateServiceScript,
+    deleteServiceScript
   } = useConfigStore();
 
   const [activeTab, setActiveTab] = useState<"envs" | "ai">("envs");
@@ -72,6 +75,8 @@ export default function ConfigPage() {
   const [editServiceValue, setEditServiceValue] = useState("");
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editNodeValue, setEditNodeValue] = useState("");
+  const [showAiApiKey, setShowAiApiKey] = useState(false);
+
 
   const selectedEnv = environments.find((e) => e.id === selectedEnvId);
 
@@ -184,44 +189,33 @@ export default function ConfigPage() {
       <div className="absolute top-0 right-0 -mr-32 -mt-32 w-96 h-96 rounded-full bg-primary/5 blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-0 -ml-32 -mb-32 w-96 h-96 rounded-full bg-blue-500/5 blur-3xl pointer-events-none" />
 
-      {/* Settings Navigation Sidebar */}
-      <div className="w-56 border-r bg-card/40 p-4 flex flex-col gap-2 relative z-10 hidden sm:flex">
-        <h2 className="text-xl font-bold tracking-tight mb-4 text-foreground/90">系统配置</h2>
-        <Button
-          variant={activeTab === "envs" ? "secondary" : "ghost"}
-          className="justify-start font-medium"
-          onClick={() => setActiveTab("envs")}
-        >
-          环境与主机管理
-        </Button>
-        <Button
-          variant={activeTab === "ai" ? "secondary" : "ghost"}
-          className="justify-start font-medium"
-          onClick={() => setActiveTab("ai")}
-        >
-          AI 日志分析配置
-        </Button>
-      </div>
-
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-4 md:p-8 relative z-10 w-full">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Mobile nav */}
-          <div className="flex sm:hidden gap-2 mb-6 overflow-x-auto pb-2 border-b">
-            <Button
-              variant={activeTab === "envs" ? "secondary" : "ghost"}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">系统中心配置</h1>
+            <p className="text-muted-foreground mt-2">管理工作环境、SSH 节点以及 AI 核心参数</p>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-8 mb-8 border-b pb-4">
+            <button
               onClick={() => setActiveTab("envs")}
-              size="sm"
+              className={cn(
+                "text-sm font-semibold pb-2 px-1 transition-all relative",
+                activeTab === "envs" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              配置环境
-            </Button>
-            <Button
-              variant={activeTab === "ai" ? "secondary" : "ghost"}
+              工作环境与节点
+            </button>
+            <button
               onClick={() => setActiveTab("ai")}
-              size="sm"
+              className={cn(
+                "text-sm font-semibold pb-2 px-1 transition-all relative",
+                activeTab === "ai" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              AI 模型设置
-            </Button>
+              AI 核心配置
+            </button>
           </div>
 
           {activeTab === "envs" && (
@@ -652,7 +646,7 @@ export default function ConfigPage() {
                                                   />
                                                   
                                                   <Popover>
-                                                    <PopoverTrigger>
+                                                    <PopoverTrigger asChild>
                                                       <button
                                                         type="button"
                                                         className={cn(
@@ -853,13 +847,28 @@ export default function ConfigPage() {
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       API Key / Auth Token
                     </label>
-                    <Input
-                      type="password"
-                      placeholder="sk-..."
-                      value={aiApiKey}
-                      onChange={(e) => setAiApiKey(e.target.value)}
-                      className="font-mono bg-background/50"
-                    />
+                    <div className="relative group/key">
+                      <Input
+                        type={showAiApiKey ? "text" : "password"}
+                        placeholder="sk-..."
+                        value={aiApiKey}
+                        onChange={(e) => setAiApiKey(e.target.value)}
+                        className="font-mono bg-background/50 pr-10"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full w-10 text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setShowAiApiKey(!showAiApiKey)}
+                        title={showAiApiKey ? "隐藏密钥" : "显示密钥"}
+                      >
+                        {showAiApiKey ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                     <p className="text-[11px] text-muted-foreground">
                       如果填入 `no-key` 将不发送 Authorization 头。密钥仅保存在本地。
                     </p>

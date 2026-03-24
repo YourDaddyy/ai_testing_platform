@@ -268,6 +268,9 @@ function AiPageContent() {
         headers: { "Content-Type": "application/json" },
         signal: abortControllerRef.current.signal,
         body: JSON.stringify({
+          apiKey: useConfigStore.getState().aiApiKey,
+          model: useConfigStore.getState().aiModel,
+          baseUrl: useConfigStore.getState().aiBaseUrl,
           requestBody: requestBody || "", 
           responseBody: response?.body || "",
           logs: logsBySource && Object.keys(logsBySource).length > 0 ? logsBySource : { merged: targetLogs },

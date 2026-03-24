@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLang } from "@/lib/i18n";
-import { Activity, Code, Settings, Server, FileText } from "lucide-react";
+import { Activity, Code, Settings, Server, FileText, Terminal } from "lucide-react";
 
 export function AppSidebar() {
   const { t } = useLang();
@@ -11,6 +11,7 @@ export function AppSidebar() {
     { href: "/", icon: Code, label: t("nav_http") },
     { href: "/logs", icon: FileText, label: t("nav_logs") },
     { href: "/ai", icon: Activity, label: t("nav_ai") },
+    { href: "/remote-control", icon: Terminal, label: t("nav_remote") },
     { href: "/config", icon: Settings, label: t("nav_config") },
   ];
 

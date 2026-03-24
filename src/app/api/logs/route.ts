@@ -38,8 +38,12 @@ function getHostConfigs(source: string, envHosts: Record<string, any>): HostConf
 async function runGrep(ssh: NodeSSH, cmd: string, encoding: string): Promise<string[]> {
   const chunks: Buffer[] = [];
   try {
-    await ssh.exec(cmd, [], { onStdout: (chunk: Buffer) => chunks.push(chunk) });
-  } catch {
+    await Promise.race([
+      ssh.exec(cmd, [], { onStdout: (chunk: Buffer) => chunks.push(chunk) }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("SSH execution timeout (60s)")), 60000))
+    ]);
+  } catch (err: any) {
+    if (err.message.includes("timeout")) throw err;
     const res = await ssh.execCommand(cmd);
     if (res.stdout) chunks.push(Buffer.from(res.stdout));
   }

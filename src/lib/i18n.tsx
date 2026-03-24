@@ -10,6 +10,7 @@ const translations = {
     nav_http: "HTTP 请求工具",
     nav_logs: "全局日志聚合",
     nav_ai: "AI 链路分析",
+    nav_remote: "服务管理中心",
     nav_config: "配置管理",
     // Header
     header_env_active: "当前环境",
@@ -60,6 +61,7 @@ const translations = {
     nav_http: "HTTP Request Tool",
     nav_logs: "Global Log Aggregation",
     nav_ai: "AI Trace Analysis",
+    nav_remote: "Service Control",
     nav_config: "Configuration",
     // Header
     header_env_active: "Active Env",

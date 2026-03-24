@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 interface AiState {
   analysisText: string;
@@ -13,23 +12,16 @@ interface AiState {
   reset: () => void;
 }
 
-export const useAiStore = create<AiState>()(
-  persist(
-    (set) => ({
-      analysisText: "",
-      status: "idle",
-      targetTxId: "",
-      displayLogs: [],
-      setAnalysisText: (update) => set((state) => ({
-        analysisText: typeof update === 'function' ? update(state.analysisText) : update
-      })),
-      setStatus: (status) => set({ status }),
-      setTargetTxId: (txId) => set({ targetTxId: txId }),
-      setDisplayLogs: (logs) => set({ displayLogs: logs }),
-      reset: () => set({ analysisText: "", status: "idle", targetTxId: "", displayLogs: [] }),
-    }),
-    {
-      name: 'crm-ai-storage', // unique name
-    }
-  )
-);
+export const useAiStore = create<AiState>()((set) => ({
+  analysisText: "",
+  status: "idle",
+  targetTxId: "",
+  displayLogs: [],
+  setAnalysisText: (update) => set((state) => ({
+    analysisText: typeof update === 'function' ? update(state.analysisText) : update
+  })),
+  setStatus: (status) => set({ status }),
+  setTargetTxId: (txId) => set({ targetTxId: txId }),
+  setDisplayLogs: (logs) => set({ displayLogs: logs }),
+  reset: () => set({ analysisText: "", status: "idle", targetTxId: "", displayLogs: [] }),
+}));

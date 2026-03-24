@@ -24,8 +24,12 @@ export const SERVICE_LOG_CONFIGS: Record<string, ServiceLogConfig> = {
     encoding: "gbk",
   },
   bop: {
-    encoding: "utf8",
+    encoding: "gbk",
     logPaths: ["/bossapp1/TongWeb4.0/bin/boss_record_public.log"],
+  },
+  cs: {
+    encoding: "gbk",
+    grepTemplate: `find /bosslog1/applog/cs/log -maxdepth 2 -name "CS_SERVICE*" | xargs -r grep -aH "{KEY}" | tail -2000`,
   },
   container: {
     encoding: "utf8",

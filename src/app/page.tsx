@@ -8,6 +8,7 @@ import { BodyEditor } from "@/components/http-tool/BodyEditor";
 import { ResponseViewer } from "@/components/http-tool/ResponseViewer";
 import { RequestHistory } from "@/components/http-tool/RequestHistory";
 import { InlineLogsTab } from "@/components/http-tool/InlineLogsTab";
+import { useLogStore } from "@/store/useLogStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,7 +35,8 @@ import {
   CommandGroup, 
   CommandInput, 
   CommandItem, 
-  CommandList 
+  CommandList,
+  CommandSeparator
 } from "@/components/ui/command";
 import {
   InputGroup,
@@ -111,6 +113,10 @@ export default function HttpToolPage() {
     setResponse, setLoading, setError, setAutoLogQueryKey, setLeftTab, setRightTab,
     setHistory, setShowHistory
   } = useHttpStore();
+
+  const logsBySource = useLogStore((s) => s.logsBySource);
+
+  const { commonUrls, addCommonUrl, removeCommonUrl, updateCommonUrl } = useConfigStore();
 
   useEffect(() => {
     setHistory(getRequestHistory());
@@ -203,7 +209,6 @@ export default function HttpToolPage() {
   };
 
   // URL Tag Management logic
-  const { commonUrls, addCommonUrl, removeCommonUrl, updateCommonUrl } = useHttpStore();
   const [isUrlPopoverOpen, setIsUrlPopoverOpen] = useState(false);
   const [isSavePopoverOpen, setIsSavePopoverOpen] = useState(false);
   const [newUrlLabel, setNewUrlLabel] = useState("");
@@ -449,7 +454,7 @@ export default function HttpToolPage() {
 
         {/* ── Main split panels ── */}
         {/* @ts-expect-error shadcn ResizablePanelGroup maps direction to react-resizable-panels but types are out of sync */}
-        <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden" autoSaveId="http-tool-layout">
+        <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden" id="http-tool-layout">
 
           {/* ── LEFT: Request editor ── */}
           <ResizablePanel defaultSize={50} minSize={25} className="flex flex-col overflow-hidden">
@@ -490,10 +495,14 @@ export default function HttpToolPage() {
               {([
                 ["resp-headers", "响应头"] as const,
                 ["response", "响应体"] as const,
-                ["bssp-log", "BSSP日志"] as const,
-                ["sac-log", "SAC日志"] as const,
-                ["te-log", "TE日志"] as const,
-                ["cmc-log", "容器云日志"] as const,
+                ...([
+                  ["bssp-log", "bssp", "BSSP日志"] as const,
+                  ["sac-log", "sac", "SAC日志"] as const,
+                  ["te-log", "te", "TE日志"] as const,
+                  ["cmc-log", "cmc", "容器云日志"] as const,
+                  ["cs-log", "cs", "CS日志"] as const,
+                ].filter(([_, source]) => (logsBySource[source]?.length || 0) > 0)
+                 .map(([key, _, label]) => [key, label] as const))
               ]).map(([key, label]) => (
                 <button
                   key={key}
@@ -506,7 +515,7 @@ export default function HttpToolPage() {
                 >
                   {label}
                   {/* Green dot indicator when logs have been fetched */}
-                  {(key === "bssp-log" || key === "sac-log" || key === "te-log" || key === "cmc-log") && autoLogQueryKey && (
+                  {(key.endsWith("-log")) && autoLogQueryKey && (
                     <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
                   )}
                 </button>
@@ -599,6 +608,18 @@ export default function HttpToolPage() {
                 requestBody={body}
                 responseBody={response?.body}
                 hostConfigs={activeEnv?.hosts?.cmc}
+                autoQueryKey={autoLogQueryKey}
+              />
+            </div>
+
+            {/* CS日志 — stays mounted */}
+            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "cs-log" ? "hidden" : ""}`}>
+              <InlineLogsTab
+                source="cs"
+                sourceLabel="CS"
+                requestBody={body}
+                responseBody={response?.body}
+                hostConfigs={activeEnv?.hosts?.cs}
                 autoQueryKey={autoLogQueryKey}
               />
             </div>

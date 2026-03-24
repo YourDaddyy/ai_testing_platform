@@ -27,6 +27,7 @@ const ALL_SOURCES = [
   { key: "cmc", label: "CMC" },
   { key: "container", label: "容器云 / Container" },
   { key: "te", label: "TE" },
+  { key: "cs", label: "CS" },
 ] as const;
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -36,6 +37,7 @@ const SOURCE_COLORS: Record<string, string> = {
   cmc: "bg-amber-500/10 text-amber-400 border-amber-500/30",
   container: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
   te: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+  cs: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
 };
 
 const STORAGE_KEY_SOURCES = "crm-logs-selected-sources";
@@ -54,7 +56,7 @@ function AggregatedServiceBlock({
   hostConfigs: any[] 
 }) {
   const { t } = useLang();
-  const logs = useLogStore((state) => state.logsBySource[source] || []);
+  const logs = useLogStore((state) => state.getLogsBySource(source));
   const queried = useLogStore((state) => state.queriedBySource[source] || false);
   
   if (queried && logs.length === 0) return null;
