@@ -22,7 +22,7 @@ interface HttpState {
 
   // UI State
   leftTab: "body" | "req-headers";
-  rightTab: "response" | "resp-headers" | "bssp-log" | "sac-log" | "te-log" | "cmc-log" | "cs-log";
+  rightTab: string; // e.g. "response" | "resp-headers" | "{svc.id}-log"
   history: HttpRequest[];
   showHistory: boolean;
   commonUrls?: never;
@@ -43,7 +43,7 @@ interface HttpState {
 
   setAutoLogQueryKey: (key: string | undefined) => void;
   setLeftTab: (tab: "body" | "req-headers") => void;
-  setRightTab: (tab: "response" | "resp-headers" | "bssp-log" | "sac-log" | "te-log" | "cmc-log" | "cs-log") => void;
+  setRightTab: (tab: string) => void;
   setHistory: (history: HttpRequest[]) => void;
   setShowHistory: (show: boolean) => void;
   
@@ -105,7 +105,8 @@ export const useHttpStore = create<HttpState>()(
     {
       name: "crm-ai-http-store",
       partialize: (state) => ({ 
-        url: state.url 
+        url: state.url,
+        body: state.body,
       }),
     }
   )

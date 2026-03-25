@@ -142,6 +142,7 @@ function FileGroup({ fileName, logs, defaultExpanded, wordWrap }: { fileName: st
 }
 
 import { HostCredentials } from "@/store/useConfigStore";
+import type { ServiceType } from "@/store/useConfigStore";
 
 export interface InlineLogsTabProps {
   source: string;
@@ -149,6 +150,7 @@ export interface InlineLogsTabProps {
   requestBody?: string;
   responseBody?: string;
   hostConfigs?: HostCredentials[];
+  serviceConfig?: Pick<ServiceType, "encoding" | "grepTemplate" | "label">;
   /** When set to a non-empty string, automatically triggers a log fetch */
   autoQueryKey?: string;
   hideControls?: boolean;
@@ -192,6 +194,7 @@ export function InlineLogsTab({
   requestBody = "",
   responseBody = "",
   hostConfigs,
+  serviceConfig,
   autoQueryKey,
   hideControls = false,
   hideEmpty = false,
@@ -209,6 +212,7 @@ export function InlineLogsTab({
   const setErrorMsg = useLogStore((state) => state.setErrorMsg);
   const lastProcessedKey = useLogStore((state) => state.lastProcessedAutoQueryKeyBySource[source] || "");
   const setLastProcessedKey = useLogStore((state) => state.setLastProcessedAutoQueryKey);
+  const setIsFetching = useLogStore((state) => state.setIsFetching);
 
   const [loading, setLoading] = useState(false);
   const [wordWrap, setWordWrap] = useState(true);
@@ -222,6 +226,7 @@ export function InlineLogsTab({
       return;
     }
     setLoading(true);
+    setIsFetching(source, true);
     setQueried(source, true);
     setErrorMsg(source, "");
     try {
@@ -233,6 +238,7 @@ export function InlineLogsTab({
           sources: [source],
           env: "test",
           hosts: { [source]: hostConfigs },
+          serviceConfigs: serviceConfig ? { [source]: serviceConfig } : undefined,
         }),
       });
       const data = await res.json();
@@ -250,8 +256,9 @@ export function InlineLogsTab({
       setErrorMsg(source, err.message || "请求日志失败");
     } finally {
       setLoading(false);
+      setIsFetching(source, false);
     }
-  }, [source, hostConfigs, txId, autoTxId, setStoreLogs, setQueried, setErrorMsg]);
+  }, [source, hostConfigs, txId, autoTxId, setStoreLogs, setQueried, setErrorMsg, setIsFetching]);
 
   // Track whether the user has manually edited the field since the last auto-fill.
   // If they have, do NOT overwrite with the next autoQueryKey.

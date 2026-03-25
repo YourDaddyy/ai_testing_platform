@@ -6,6 +6,7 @@ export const EMPTY_ARRAY: any[] = [];
 export interface LogStore {
   logsBySource: Record<string, LogEntry[]>;
   queriedBySource: Record<string, boolean>;
+  isFetchingBySource: Record<string, boolean>;
   txIdBySource: Record<string, string>;
   errorMsgBySource: Record<string, string>;
   serverErrorsBySource: Record<string, string[]>;
@@ -13,6 +14,7 @@ export interface LogStore {
   getLogsBySource: (source: string) => LogEntry[];
   getServerErrorsBySource: (source: string) => string[];
   setLogs: (source: string, logs: LogEntry[], serverErrors?: string[]) => void;
+  setIsFetching: (source: string, isFetching: boolean) => void;
   setQueried: (source: string, queried: boolean) => void;
   setTxId: (source: string, txId: string) => void;
   setErrorMsg: (source: string, errorMsg: string) => void;
@@ -25,6 +27,7 @@ export const useLogStore = create<LogStore>()((set, get) => ({
   getLogsBySource: (source: string) => (get().logsBySource[source] || EMPTY_ARRAY),
   getServerErrorsBySource: (source: string) => (get().serverErrorsBySource[source] || EMPTY_ARRAY),
   queriedBySource: {},
+  isFetchingBySource: {},
   txIdBySource: {},
   errorMsgBySource: {},
   serverErrorsBySource: {},
@@ -34,6 +37,10 @@ export const useLogStore = create<LogStore>()((set, get) => ({
     set((state) => ({
       logsBySource: { ...state.logsBySource, [source]: logs },
       serverErrorsBySource: { ...state.serverErrorsBySource, [source]: serverErrors || [] },
+    })),
+  setIsFetching: (source, isFetching) =>
+    set((state) => ({
+      isFetchingBySource: { ...state.isFetchingBySource, [source]: isFetching }
     })),
   setQueried: (source, queried) =>
     set((state) => ({
@@ -57,6 +64,7 @@ export const useLogStore = create<LogStore>()((set, get) => ({
   clearAllLogs: () => set({ 
     logsBySource: {}, 
     queriedBySource: {}, 
+    isFetchingBySource: {},
     txIdBySource: {}, 
     errorMsgBySource: {},
     lastProcessedAutoQueryKeyBySource: {}

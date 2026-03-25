@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { NodeSSH } from "node-ssh";
 import iconv from "iconv-lite";
-import { SERVICE_LOG_CONFIGS } from "@/lib/serviceLogConfigs";
 
 interface HostConfig {
   host: string;
@@ -14,12 +13,20 @@ interface HostConfig {
   grepTemplate?: string;
 }
 
-function getHostConfigs(source: string, envHosts: Record<string, any>): HostConfig[] {
+interface ServiceConfig {
+  encoding?: "gbk" | "utf8";
+  grepTemplate?: string;
+  label?: string;
+}
+
+function getHostConfigs(
+  source: string,
+  envHosts: Record<string, any>,
+  serviceConfig?: ServiceConfig
+): HostConfig[] {
   const key = source.toLowerCase();
   const overrides = envHosts?.[key];
   if (!Array.isArray(overrides)) return [];
-
-  const svc = SERVICE_LOG_CONFIGS[key];
 
   return overrides
     .filter(o => o.sshHost)
@@ -28,10 +35,10 @@ function getHostConfigs(source: string, envHosts: Record<string, any>): HostConf
       port: Number(o.sshPort) || 22,
       username: o.sshUsername || "root",
       password: o.sshPassword || "",
-      logPaths: (o.logPaths && o.logPaths.length > 0) ? o.logPaths : (svc?.logPaths ?? []),
+      logPaths: (o.logPaths && o.logPaths.length > 0) ? o.logPaths : [],
       label: o.label,
-      encoding: svc?.encoding ?? "utf8",
-      grepTemplate: svc?.grepTemplate,
+      encoding: serviceConfig?.encoding ?? "utf8",
+      grepTemplate: serviceConfig?.grepTemplate,
     }));
 }
 
@@ -40,7 +47,7 @@ async function runGrep(ssh: NodeSSH, cmd: string, encoding: string): Promise<str
   try {
     await Promise.race([
       ssh.exec(cmd, [], { onStdout: (chunk: Buffer) => chunks.push(chunk) }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("SSH execution timeout (60s)")), 60000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("SSH execution timeout (120s)")), 120000))
     ]);
   } catch (err: any) {
     if (err.message.includes("timeout")) throw err;
@@ -116,14 +123,6 @@ export interface LogEntry {
   fileName?: string;
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  bssp: "BSSP",
-  sac: "SAC",
-  cmc: "CMC",
-  te: "TE",
-  bop: "BOP",
-};
-
 const LOG_PATTERN = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.,]\d{1,3})[\s\[\]]+(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)[\s\]]+(.+)/i;
 // TE text log: "PID: 1261824 TIME: 2026/03/18 13:42:44.961.780 LEVEL: 4 MSG: ..."
 const TE_LOG_PATTERN = /TIME:\s*(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\.\d+\s+LEVEL:\s*(\d+)\s+MSG:\s*([\s\S]+)/i;
@@ -142,7 +141,14 @@ function parseTELevel(level: string): "INFO" | "WARN" | "ERROR" | "DEBUG" {
   return "INFO";
 }
 
-function parseLine(raw: string, source: string, hostLabel: string | undefined, idx: number, fileName?: string): LogEntry {
+function parseLine(
+  raw: string,
+  source: string,
+  sourceLabel: string,
+  hostLabel: string | undefined,
+  idx: number,
+  fileName?: string
+): LogEntry {
   if (source === "te") {
     const teM = raw.match(TE_LOG_PATTERN);
     if (teM) {
@@ -150,7 +156,7 @@ function parseLine(raw: string, source: string, hostLabel: string | undefined, i
         id: `${source}_${hostLabel || "node"}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
         timestamp: parseTETimestamp(teM[1]),
         source,
-        sourceLabel: SOURCE_LABELS[source] || source.toUpperCase(),
+        sourceLabel,
         hostLabel,
         level: parseTELevel(teM[2]),
         message: teM[3].trim(),
@@ -164,7 +170,7 @@ function parseLine(raw: string, source: string, hostLabel: string | undefined, i
     id: `${source}_${hostLabel || "node"}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
     timestamp: m?.[1] ? new Date(m[1].replace(",", ".")).toISOString() : new Date().toISOString(),
     source,
-    sourceLabel: SOURCE_LABELS[source] || source.toUpperCase(),
+    sourceLabel,
     hostLabel,
     level: normalizeLevel(m?.[2]),
     message: m?.[3]?.trim() ?? raw.trim(),
@@ -185,7 +191,8 @@ function normalizeLevel(level?: string): "INFO" | "WARN" | "ERROR" | "DEBUG" {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { queryKey, sources = [], hosts = {} } = body;
+    // serviceConfigs: Record<source, { encoding, grepTemplate, label }> — sent from frontend
+    const { queryKey, sources = [], hosts = {}, serviceConfigs = {} } = body;
 
     if (!queryKey || sources.length === 0) {
       return NextResponse.json({ error: "queryKey and sources are required" }, { status: 400 });
@@ -195,7 +202,9 @@ export async function POST(req: NextRequest) {
     const errors: string[] = [];
 
     const queryPromises = sources.flatMap((source: string) => {
-      const configs = getHostConfigs(source, hosts);
+      const svcConfig: ServiceConfig = serviceConfigs[source] ?? {};
+      const sourceLabel = svcConfig.label || source.toUpperCase();
+      const configs = getHostConfigs(source, hosts, svcConfig);
       if (!configs.length) {
         errors.push(`未配置来源: ${source}`);
         return [];
@@ -204,7 +213,7 @@ export async function POST(req: NextRequest) {
         try {
           const rawLines = await sshGrep(cfg, queryKey);
           if (!rawLines.length) {
-            errors.push(`${SOURCE_LABELS[source] || source} [${cfg.label || cfg.host}]: 暂无匹配到流水号的日志`);
+            errors.push(`${sourceLabel} [${cfg.label || cfg.host}]: 暂无匹配到流水号的日志`);
             return;
           }
           rawLines.forEach((raw, i) => {
@@ -218,10 +227,10 @@ export async function POST(req: NextRequest) {
                 content = raw.substring(colon + 1);
               }
             }
-            results.push(parseLine(content, source, cfg.label, i, fileName));
+            results.push(parseLine(content, source, sourceLabel, cfg.label, i, fileName));
           });
         } catch (err: any) {
-          errors.push(`${SOURCE_LABELS[source] || source} [${cfg.label || cfg.host}]: 连接失败 — ${err.message}`);
+          errors.push(`${sourceLabel} [${cfg.label || cfg.host}]: 异常 — ${err.message}`);
         }
       });
     });

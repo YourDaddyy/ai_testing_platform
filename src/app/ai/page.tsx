@@ -33,6 +33,7 @@ import Link from "next/link";
 import mermaid from "mermaid";
 import { cn } from "@/lib/utils";
 import { SquareStop } from "lucide-react";
+import { filterHighValueLogs } from "@/lib/logFilter";
 
 // Initialize Mermaid
 if (typeof window !== "undefined") {
@@ -81,10 +82,14 @@ const Mermaid = ({ chart }: { chart: string }) => {
 function AiPageContent() {
   const searchParams = useSearchParams();
   const txIdParam = searchParams.get("txId") || "";
+  const sourcesParam = searchParams.get("sources");
+  const autoRunParam = searchParams.get("autoRun") === "true";
   
   const { body: httpRequestBody, response: httpResponse } = useHttpStore();
-  const { environments, activeEnvId } = useConfigStore();
+  const { environments, activeEnvId, serviceTypes } = useConfigStore();
   const activeEnv = environments.find(e => e.id === activeEnvId) || environments[0];
+  
+  const targetSources = sourcesParam ? sourcesParam.split(",") : serviceTypes.map(s => s.id);
   
   // Persistent state from AiStore
   const { 
@@ -103,6 +108,7 @@ function AiPageContent() {
   const [requestBody, setRequestBody] = useState<string | null>(httpRequestBody);
   const [response, setResponse] = useState<any>(httpResponse);
   const [highlightedLogId, setHighlightedLogId] = useState<string | null>(null);
+  const [showHighValueOnly, setShowHighValueOnly] = useState<boolean>(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   
   const logsBySource = useLogStore((s) => s.logsBySource);
@@ -159,15 +165,23 @@ function AiPageContent() {
     setDisplayLogs([]);
     
     try {
+      // Build service configs dictionary for backend grep execution
+      const serviceConfigs = targetSources.reduce((acc, sourceId) => {
+        const svc = serviceTypes.find(s => s.id === sourceId);
+        if (svc) acc[sourceId] = { encoding: svc.encoding, grepTemplate: svc.grepTemplate, label: svc.label };
+        return acc;
+      }, {} as Record<string, any>);
+
       // Logic from runAnalysis but without AI analysis trigger
       const logRes = await fetch("/api/logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           queryKey: idToFetch.trim(),
-          sources: ["bssp", "sac", "te"],
+          sources: targetSources,
           env: activeEnv?.name || "test",
           hosts: activeEnv?.hosts || {},
+          serviceConfigs,
         }),
       });
       
@@ -209,14 +223,21 @@ function AiPageContent() {
     setDisplayLogs([]);
 
     try {
+      const serviceConfigs = targetSources.reduce((acc, sourceId) => {
+        const svc = serviceTypes.find(s => s.id === sourceId);
+        if (svc) acc[sourceId] = { encoding: svc.encoding, grepTemplate: svc.grepTemplate, label: svc.label };
+        return acc;
+      }, {} as Record<string, any>);
+
       const logRes = await fetch("/api/logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           queryKey: txId.trim(),
-          sources: ["bssp", "sac", "te"],
+          sources: targetSources,
           env: activeEnv?.name || "test",
           hosts: activeEnv?.hosts || {},
+          serviceConfigs,
         }),
       });
       
@@ -228,7 +249,9 @@ function AiPageContent() {
         index: i + 1,
         id: l.id || `log-${i}-${Date.now()}` // Ensure unique ID
       }));
-      setDisplayLogs(processedLogs);
+      
+      const targetFilteredLogs = showHighValueOnly ? filterHighValueLogs(processedLogs) : processedLogs;
+      setDisplayLogs(targetFilteredLogs);
       
       if (fetchedLogs.length === 0) {
         setStatus("error");
@@ -236,14 +259,22 @@ function AiPageContent() {
         return;
       }
       
-      // Trigger AI Analysis
-      performAiAnalysis(processedLogs);
+      // Trigger AI Analysis with filtered logs
+      performAiAnalysis(targetFilteredLogs);
     } catch (err: any) {
       console.error("Deep analysis failed:", err);
       setStatus("error");
       setAnalysisText("深度分析失败，请检查后端服务: " + err.message);
     }
   };
+
+  const hasAutoRunRef = useRef(false);
+  useEffect(() => {
+    if (autoRunParam && txIdParam && !hasAutoRunRef.current && status !== "fetching" && status !== "analyzing") {
+      hasAutoRunRef.current = true;
+      runAnalysis();
+    }
+  }, [autoRunParam, txIdParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopAnalysis = () => {
     if (abortControllerRef.current) {
@@ -493,24 +524,30 @@ function AiPageContent() {
                 </CardContent>
               </Card>
 
-              <Card className="border-primary/10 bg-card/50 overflow-hidden">
-                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b pb-2">
-                  <CardTitle className="text-sm font-semibold tracking-tight">多维日志时间轴</CardTitle>
-                  <Badge variant="secondary" className="text-[9px] font-mono tracking-tighter bg-primary/10 text-primary border-none">Analysis Spine</Badge>
-                </CardHeader>
-                <CardContent className="px-0 pb-0 pt-0 relative overflow-hidden">
-                  <div className="relative py-2 pr-2">
+              {displayLogs.length > 0 && (
+                <Card className="border-primary/10 bg-card/50 overflow-hidden">
+                  <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b pb-2">
+                    <div className="flex items-center gap-3">
+                      <CardTitle className="text-sm font-semibold tracking-tight">多维日志时间轴</CardTitle>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={showHighValueOnly} 
+                          onChange={(e) => setShowHighValueOnly(e.target.checked)}
+                          className="w-3 h-3 accent-primary"
+                        />
+                        <span className="text-[10px] text-muted-foreground font-medium">高价值提纯模式</span>
+                      </label>
+                    </div>
+                    <Badge variant="secondary" className="text-[9px] font-mono tracking-tighter bg-primary/10 text-primary border-none">Analysis Spine</Badge>
+                  </CardHeader>
+                  <CardContent className="px-0 pb-0 pt-0 relative overflow-hidden">
+                    <div className="relative py-2 pr-2">
                     {/* Main Axis Line - Bold Black - Precisely at 36px */}
                     <div className="absolute left-[36px] top-0 bottom-0 w-[1.5px] bg-black/90 z-0" />
 
-                    {displayLogs.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-20 opacity-30 gap-2">
-                        <ListRestart className="h-10 w-10" />
-                        <p className="text-xs text-center px-4">等待数据加载 (输入 Tx ID 并点击搜索)...</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {displayLogs.map((log, i) => {
+                    <div className="space-y-0.5">
+                      {displayLogs.map((log, i) => {
                           const logId = `log-idx-${i + 1}`;
                           const isHighlighted = highlightedLogId === logId;
 
@@ -551,10 +588,10 @@ function AiPageContent() {
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </ScrollArea>
         </div>

@@ -78,12 +78,14 @@ const DEFAULT_XML_BODY = `<?xml version="1.0" encoding="GBK"?>
 function extractTxIdFromXml(xml: string): string | null {
   if (!xml) return null;
   
-  // 1. Technical identifiers (tx_id, transId, etc.) — higher signal for BSSP/TE logs
+  // 1. Technical identifiers — higher signal for BSSP/TE logs
   const txPatterns = [
-    /<(?:tx_id|txId|transId|bssp_log|TRANS_CODE|ORDER_ID|SERIAL_NO|tx_serial_no|tx_id_info)[^>]*>\s*([^<\s]+)\s*<\//i,
+    /<(?:tx_id|txId|transId|TRANS_CODE|ORDER_ID|SERIAL_NO|tx_serial_no|SerialID|serialId|FlowNo|flowNo|BatchNo)[^>]*>\s*([^<\s]+)\s*<\//i,
     /txId[:=]\s*([A-Za-z0-9_-]+)/i,
     /tx_id[:=]\s*([A-Za-z0-9_-]+)/i,
     /transId[:=]\s*([A-Za-z0-9_-]+)/i,
+    /"(?:SerialID|serialId|txId|orderId|batchNo|flowNo)"\s*:\s*"([^"]+)"/i,
+    /"(?:SerialID|serialId|txId|orderId|batchNo|flowNo)"\s*:\s*(\d+)/i,
   ];
   
   for (const p of txPatterns) {
@@ -98,12 +100,16 @@ function extractTxIdFromXml(xml: string): string | null {
   const acceptFallbackMatch = /accept_id=([A-Za-z0-9_-]+)/i.exec(xml);
   if (acceptFallbackMatch?.[1]?.trim()) return acceptFallbackMatch[1].trim();
 
+  // 3. Raw numeric string ≥ 10 digits (流水号/SerialID pattern)
+  const numMatch = /\b(\d{10,})\b/.exec(xml);
+  if (numMatch?.[1]) return numMatch[1];
+
   return null;
 }
 
 export default function HttpToolPage() {
   const router = useRouter();
-  const { environments, activeEnvId } = useConfigStore();
+  const { environments, activeEnvId, serviceTypes } = useConfigStore();
   const activeEnv = environments.find(e => e.id === activeEnvId) || environments[0];
   
   const {
@@ -115,6 +121,7 @@ export default function HttpToolPage() {
   } = useHttpStore();
 
   const logsBySource = useLogStore((s) => s.logsBySource);
+  const isFetchingBySource = useLogStore((s) => s.isFetchingBySource);
 
   const { commonUrls, addCommonUrl, removeCommonUrl, updateCommonUrl } = useConfigStore();
 
@@ -154,6 +161,8 @@ export default function HttpToolPage() {
       // Extract high-fidelity technical ID (tx_id) first, fallback to business (accept_id)
       const txId = extractTxIdFromXml(data.body || "") || extractTxIdFromXml(body);
       if (txId) {
+        // Clear stale log state from previous request before triggering new search
+        useLogStore.getState().clearAllLogs();
         setAutoLogQueryKey(`${txId}__${Date.now()}`);
       }
     } catch (err: unknown) {
@@ -493,33 +502,36 @@ export default function HttpToolPage() {
             {/* Tab bar */}
             <div className="flex items-center gap-1 px-3 pt-2 border-b shrink-0 flex-wrap">
               {([
-                ["resp-headers", "响应头"] as const,
-                ["response", "响应体"] as const,
-                ...([
-                  ["bssp-log", "bssp", "BSSP日志"] as const,
-                  ["sac-log", "sac", "SAC日志"] as const,
-                  ["te-log", "te", "TE日志"] as const,
-                  ["cmc-log", "cmc", "容器云日志"] as const,
-                  ["cs-log", "cs", "CS日志"] as const,
-                ].filter(([_, source]) => (logsBySource[source]?.length || 0) > 0)
-                 .map(([key, _, label]) => [key, label] as const))
-              ]).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setRightTab(key)}
-                  className={`text-xs px-3 py-1.5 transition-colors border-b-2 -mb-px flex items-center gap-1 ${
-                    rightTab === key
-                      ? "border-primary text-foreground font-semibold"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                  {/* Green dot indicator when logs have been fetched */}
-                  {(key.endsWith("-log")) && autoLogQueryKey && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                  )}
-                </button>
-              ))}
+                ["resp-headers", "响应头"] as [string, string],
+                ["response", "响应体"] as [string, string],
+                // Log tabs: show services that have returned log data OR are currently fetching
+                ...serviceTypes
+                  .filter(svc => (logsBySource[svc.id]?.length || 0) > 0 || isFetchingBySource[svc.id])
+                  .map(svc => [`${svc.id}-log`, `${svc.label}日志`] as [string, string]),
+              ]).map(([key, label]) => {
+                const sourceId = key.replace(/-log$/, "");
+                const hasLogs = key.endsWith("-log") && (logsBySource[sourceId]?.length || 0) > 0;
+                const isLoading = key.endsWith("-log") && isFetchingBySource[sourceId];
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setRightTab(key as any)}
+                    className={`text-xs px-3 py-1.5 transition-colors border-b-2 -mb-px flex items-center gap-1 ${
+                      rightTab === key
+                        ? "border-primary text-foreground font-semibold"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                    {hasLogs && !isLoading && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                    )}
+                    {isLoading && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0 animate-pulse" />
+                    )}
+                  </button>
+                );
+              })}
 
               {/* AI Deep Analysis Trigger */}
               <div className="ml-auto pb-1">
@@ -531,7 +543,7 @@ export default function HttpToolPage() {
                     if (autoLogQueryKey) {
                       const id = autoLogQueryKey.split("__")[0];
                       useAiStore.getState().setTargetTxId(id);
-                      router.push(`/ai?txId=${id}`);
+                      router.push(`/ai?txId=${id}&autoRun=true`);
                     } else {
                       router.push("/ai");
                     }
@@ -564,65 +576,23 @@ export default function HttpToolPage() {
               )}
             </div>
 
-            {/* BSSP日志 — stays mounted so useEffect fires even when tab not visible */}
-            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "bssp-log" ? "hidden" : ""}`}>
-              <InlineLogsTab
-                source="bssp"
-                sourceLabel="BSSP"
-                requestBody={body}
-                responseBody={response?.body}
-                hostConfigs={activeEnv?.hosts?.bssp}
-                autoQueryKey={autoLogQueryKey}
-              />
-            </div>
-
-            {/* SAC日志 — stays mounted */}
-            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "sac-log" ? "hidden" : ""}`}>
-              <InlineLogsTab
-                source="sac"
-                sourceLabel="SAC"
-                requestBody={body}
-                responseBody={response?.body}
-                hostConfigs={activeEnv?.hosts?.sac}
-                autoQueryKey={autoLogQueryKey}
-              />
-            </div>
-
-            {/* TE日志 — stays mounted */}
-            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "te-log" ? "hidden" : ""}`}>
-              <InlineLogsTab
-                source="te"
-                sourceLabel="TE"
-                requestBody={body}
-                responseBody={response?.body}
-                hostConfigs={activeEnv?.hosts?.te}
-                autoQueryKey={autoLogQueryKey}
-              />
-            </div>
-
-            {/* 容器云日志 — stays mounted */}
-            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "cmc-log" ? "hidden" : ""}`}>
-              <InlineLogsTab
-                source="cmc"
-                sourceLabel="容器云"
-                requestBody={body}
-                responseBody={response?.body}
-                hostConfigs={activeEnv?.hosts?.cmc}
-                autoQueryKey={autoLogQueryKey}
-              />
-            </div>
-
-            {/* CS日志 — stays mounted */}
-            <div className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== "cs-log" ? "hidden" : ""}`}>
-              <InlineLogsTab
-                source="cs"
-                sourceLabel="CS"
-                requestBody={body}
-                responseBody={response?.body}
-                hostConfigs={activeEnv?.hosts?.cs}
-                autoQueryKey={autoLogQueryKey}
-              />
-            </div>
+            {/* Dynamic log panels — one per service type */}
+            {serviceTypes.map(svc => (
+              <div
+                key={svc.id}
+                className={`flex-1 overflow-hidden px-3 pb-3 pt-1 ${rightTab !== `${svc.id}-log` ? "hidden" : ""}`}
+              >
+                <InlineLogsTab
+                  source={svc.id}
+                  sourceLabel={svc.label}
+                  requestBody={body}
+                  responseBody={response?.body}
+                  hostConfigs={activeEnv?.hosts?.[svc.id]}
+                  serviceConfig={{ encoding: svc.encoding, grepTemplate: svc.grepTemplate, label: svc.label }}
+                  autoQueryKey={autoLogQueryKey}
+                />
+              </div>
+            ))}
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLang } from "@/lib/i18n";
 import { useConfigStore } from "@/store/useConfigStore";
+import type { ServiceType } from "@/store/useConfigStore";
 import { useLogStore } from "@/store/useLogStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,69 +21,67 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { InlineLogsTab } from "@/components/http-tool/InlineLogsTab";
 
-const ALL_SOURCES = [
-  { key: "bssp", label: "BSSP" },
-  { key: "sac", label: "SAC" },
-  { key: "bop", label: "BOP" },
-  { key: "cmc", label: "CMC" },
-  { key: "container", label: "容器云 / Container" },
-  { key: "te", label: "TE" },
-  { key: "cs", label: "CS" },
-] as const;
-
-const SOURCE_COLORS: Record<string, string> = {
-  bssp: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-  sac: "bg-purple-500/10 text-purple-400 border-purple-500/30",
-  bop: "bg-orange-500/10 text-orange-400 border-orange-500/30",
-  cmc: "bg-amber-500/10 text-amber-400 border-amber-500/30",
-  container: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-  te: "bg-rose-500/10 text-rose-400 border-rose-500/30",
-  cs: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
-};
 
 const STORAGE_KEY_SOURCES = "crm-logs-selected-sources";
 const STORAGE_KEY_QUERY = "crm-logs-last-query";
 const STORAGE_KEY_HAS_QUERIED = "crm-logs-has-queried";
 
 function AggregatedServiceBlock({ 
-  source, 
-  sourceLabel, 
+  source,
+  svc,
   autoQueryKey, 
   hostConfigs 
 }: { 
-  source: string; 
-  sourceLabel: string; 
+  source: string;
+  svc: ServiceType;
   autoQueryKey: string; 
-  hostConfigs: any[] 
+  hostConfigs: any[]
 }) {
   const { t } = useLang();
   const logs = useLogStore((state) => state.getLogsBySource(source));
   const queried = useLogStore((state) => state.queriedBySource[source] || false);
+  const isFetching = useLogStore((state) => state.isFetchingBySource[source] || false);
   
-  if (queried && logs.length === 0) return null;
+  // dynamic badge color from service config, fallback to neutral
+  const colorClass = svc.color?.replace("bg-", "bg-").replace("text-", "text-") ?? "bg-zinc-500/10 text-zinc-400 border-zinc-500/30";
+  
+  // Only hide the block if the search is entirely finished AND returned 0 logs.
+  // While fetching, keep it visible so the amber dot shows search progress.
+  if (!isFetching && queried && logs.length === 0) return null;
 
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
       <div className="flex items-center justify-between border-l-4 border-primary pl-4 py-1">
         <div className="flex flex-col">
-          <h2 className="text-sm font-black tracking-[0.2em] uppercase text-foreground leading-tight">
-            {sourceLabel}
-          </h2>
-          <span className="text-[10px] text-muted-foreground opacity-40 uppercase font-mono">
-            {logs.length > 0 ? t("log_node_activity") : t("log_connected")}
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-black tracking-[0.2em] uppercase text-foreground leading-tight">
+              {svc.label}
+            </h2>
+            {isFetching ? (
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+            ) : (queried && logs.length > 0) ? (
+              <span className="relative flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            ) : null}
+          </div>
+          <span className="text-[10px] text-muted-foreground opacity-40 uppercase font-mono mt-0.5">
+            {isFetching ? "Searching..." : logs.length > 0 ? t("log_node_activity") : t("log_connected")}
           </span>
         </div>
-        <Badge variant="outline" className={cn("text-[10px] py-0 px-2 h-5 font-bold shadow-sm whitespace-nowrap uppercase", SOURCE_COLORS[source])}>
-          {logs.length > 0 ? t("log_records_found") : t("log_connected")}
+        <Badge variant="outline" className={cn("text-[10px] py-0 px-2 h-5 font-bold shadow-sm whitespace-nowrap uppercase", colorClass)}>
+          {isFetching ? "SEARCHING..." : logs.length > 0 ? t("log_records_found") : t("log_connected")}
         </Badge>
       </div>
       
       <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black/40">
         <InlineLogsTab
           source={source}
-          sourceLabel={sourceLabel}
+          sourceLabel={svc.label}
           autoQueryKey={autoQueryKey}
           hostConfigs={hostConfigs}
+          serviceConfig={{ encoding: svc.encoding, grepTemplate: svc.grepTemplate, label: svc.label }}
           hideControls={true}
           hideEmpty={true}
         />
@@ -93,7 +92,7 @@ function AggregatedServiceBlock({
 
 export default function LogsPage() {
   const { t } = useLang();
-  const { environments, activeEnvId } = useConfigStore();
+  const { environments, activeEnvId, serviceTypes } = useConfigStore();
   const [queryKey, setQueryKey] = useState("");
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
   const [hasQueried, setHasQueried] = useState(false);
@@ -110,16 +109,15 @@ export default function LogsPage() {
         if (Array.isArray(parsed)) setSelectedSources(new Set(parsed));
       } catch (e) { /* silent */ }
     } else {
-      setSelectedSources(new Set(["bssp", "sac", "cmc"]));
+      setSelectedSources(new Set(serviceTypes.slice(0, 3).map(s => s.id)));
     }
 
-    // Last Query Key
+    // Restore keyword only — do NOT restore hasQueried or re-run search
     const lastQuery = localStorage.getItem(STORAGE_KEY_QUERY);
     if (lastQuery) setQueryKey(lastQuery);
 
-    // Has Queried state
-    const lastHasQueried = localStorage.getItem(STORAGE_KEY_HAS_QUERIED);
-    if (lastHasQueried === "true") setHasQueried(true);
+    // Clear any stale log results from previous session
+    useLogStore.getState().clearAllLogs();
   }, []);
 
   // 2. Persistence saving
@@ -131,8 +129,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_QUERY, queryKey);
-    localStorage.setItem(STORAGE_KEY_HAS_QUERIED, hasQueried ? "true" : "false");
-  }, [queryKey, hasQueried]);
+  }, [queryKey]);
 
   // Handle environment selection
   const [selectedEnvId, setSelectedEnvId] = useState<string>("");
@@ -221,7 +218,7 @@ export default function LogsPage() {
           <div className="flex flex-col gap-3">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("log_select_sources")}</label>
             <div className="flex flex-col gap-1.5">
-              {ALL_SOURCES.map(({ key, label }) => (
+              {serviceTypes.map(({ id: key, label }) => (
                 <label
                   key={key}
                   className={cn(
@@ -260,7 +257,7 @@ export default function LogsPage() {
         </div>
 
         <div className="mt-auto p-5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-100/30 dark:bg-zinc-900/10">
-           <Link href={`/ai?txId=${encodeURIComponent(queryKey)}`} className="block">
+           <Link href={`/ai?txId=${encodeURIComponent(queryKey)}&sources=${Array.from(selectedSources).join(',')}&autoRun=true`} className="block">
              <Button variant="outline" size="sm" className="w-full text-[11px] h-10 gap-2 border-primary/20 text-primary hover:bg-primary/5 rounded-lg font-black uppercase italic tracking-tighter">
                <Activity className="w-4 h-4" />
                {t("nav_ai")}
@@ -307,14 +304,15 @@ export default function LogsPage() {
 
                 <div className="grid grid-cols-1 gap-12 pt-4">
                   {Array.from(selectedSources).map(source => {
-                    const sourceInfo = ALL_SOURCES.find(s => s.key === source);
-                    const hostConfigs = activeEnv?.hosts?.[source as keyof typeof activeEnv.hosts] || [];
+                    const svc = serviceTypes.find(s => s.id === source);
+                    if (!svc) return null;
+                    const hostConfigs = activeEnv?.hosts?.[source] || [];
                     
                     return (
                       <AggregatedServiceBlock
                         key={source}
                         source={source}
-                        sourceLabel={sourceInfo?.label || source}
+                        svc={svc}
                         autoQueryKey={autoQueryKey}
                         hostConfigs={hostConfigs as any}
                       />
