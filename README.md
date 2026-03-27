@@ -1,109 +1,57 @@
-# CRM AI Platform
+# AI Log Analysis Platform
 
-An AI-powered log analysis tool for distributed CRM systems. Search logs across multiple servers by transaction ID, then get a full AI diagnosis of what happened across the full request chain.
+An AI-powered log analysis tool designed for distributed microservice architectures. Search logs across multiple servers via SSH by transaction ID/Keywords, then get a full AI diagnosis of what happened across the entire request chain.
 
-## Teammate Setup
+## 🚀 Features
 
-1. Unzip the distribution package
-2. Copy `.env.example` → `.env.local` (no API keys needed in `.env` — configure in the UI)
-3. Double-click `scripts/runtime/start-app.bat` — Chrome opens automatically in ~5 seconds
+- **Multi-source Log Aggregation** — Fetch logs from multiple distributed nodes (App, Database, API Gateway, Auth, etc.) via SSH in parallel.
+- **Decoupled Search & Analysis** — Search logs first to preview your trace; trigger LLM analysis separately when ready.
+- **High-value Log Purification** — Built-in heuristic noise filter that strips generic TRACE noise, deduplicates repeated payloads via content fingerprinting, and surfaces only meaningful signals (errors, SQL, XML/JSON payloads).
+- **Realtime Filter Toggle** — Switch between purified and raw log views instantly without re-fetching over SSH.
+- **AI Diagnosis** — Full end-to-end chain analysis using any OpenAI or Anthropic compatible API (Claude, GPT, DeepSeek, local LLMs); identifies bottlenecks, logic conflicts, and plots Mermaid diagrams.
+- **Log Jump Links** — AI report references `[Log #N]` inline; click to auto-scroll and highlight the exact log entry in your viewport.
+- **Customizable Execution Pipelines** — Each service type uses its own bash search command (e.g. `grep`, `find`) dynamically defined in the Configuration UI.
+- **Legacy System Support** — Native GBK/UTF-8 encoding support. Log files are seamlessly decoded on the Node.js side via `iconv-lite`.
+- **Remote Batch Control** — Execute operational commands or scripts across multiple registered hosts simultaneously.
 
-> No build step needed. The package includes a pre-built server.
+## 🛠️ Quick Start
 
----
-
-## Features
-
-- **Multi-source log aggregation** — Fetch logs from BSSP, SAC, CMC, TE, BOP via SSH in parallel
-- **Decoupled search & analysis** — Search logs first to preview; trigger AI analysis separately when ready
-- **High-value log purification** — Built-in noise filter that strips DEBUG/TRACE noise, deduplicates repeated payloads via content fingerprinting, and surfaces only meaningful signals (errors, SQL, XML/JSON payloads, key request/response lines)
-- **Realtime filter toggle** — Switch between purified and raw log views instantly without re-fetching
-- **AI diagnosis** — Full end-to-end chain analysis using any OpenAI-compatible API (GLM, Claude, GPT, etc.); identifies bottlenecks, logic conflicts, and error nodes with log references
-- **Log jump links** — AI report references `[Log #N]` inline; click to scroll and highlight the exact log entry
-- **GBK encoding support** — Log files decoded on the Node.js side via `iconv-lite`; no server-side conversion needed
-- **Per-service grep patterns** — Each service type uses its own search command defined in the Config UI
-- **Shared config** — Settings stored server-side in `config.json`; consistent across all browsers on the same machine
-- **Response formatting** — Auto-detects and pretty-prints JSON/XML payloads
-- **Remote batch control** — Execute commands across multiple hosts simultaneously
-
-## Quick Start (Development)
-
+### Development
 ```bash
 npm install
 npm run dev
 ```
-
 Visit [http://localhost:3000](http://localhost:3000).
 
-## AI Configuration
-
-AI settings (API Key, Model, Base URL) are configured **in the UI** under the Config → AI tab. No environment variables needed. Supports any OpenAI-compatible endpoint.
-
-## Environment Variables
-
-Copy `.env.example` to `.env.local`. The only required variable is:
-
-```env
-CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
-```
-
-## Production (Windows)
-
-**Start:**
-
-```powershell
-./scripts/runtime/start-app.bat
-```
-
-**Stop:**
-
-```powershell
-./scripts/runtime/stop.bat
-```
-
-**Package for distribution:**
-
-```powershell
-./scripts/build/pack.bat
-```
-
-## Production (Linux / Mac)
-
+### Production
 ```bash
-chmod +x scripts/runtime/start-app.sh
-./scripts/runtime/start-app.sh
+npm run build
+npm start
 ```
 
-## Adding or Changing Log Search Patterns
+## ⚙️ Configuration
 
-Log paths and grep commands are configured per service type in the **Config UI** under the service types section. Each service type stores its own `grepTemplate` and `encoding`. Changes apply to all environments automatically.
+- **Hosts & Services**: Add your server nodes, SSH credentials, and log paths directly in the Web UI (Settings -> Environments).
+- **AI Integration**: Configure your LLM endpoint (API Key, Model Name, Base URL) in the Web UI. No hardcoded `.env` variables are needed.
 
-To add a new environment or server node, use the Config UI to add hosts and assign them to an environment.
+*Note: All settings are safely stored server-side in a local `config.json` file to prevent frontend exposure.*
 
-## Project Structure
+## 🗂️ Project Structure
 
 ```text
 src/
-  app/          # Next.js pages (home, ai, config, logs, remote-control)
-  app/api/      # API routes (ai, config, logs, proxy, remote-exec)
-  components/   # Shared UI components
-  lib/          # Utilities (logFilter, logProcessor, i18n, etc.)
-  store/        # Zustand stores (ai, config, http, log)
-scripts/
-  runtime/      # Start/Stop scripts
-  build/        # Packaging and deployment
-docker/         # Dockerfile, compose, and environment configs
-data/           # Merged host configs (generated)
-config.json     # Persisted environment & host configurations
+  app/          # Next.js App Router (home, ai, config, remote-control)
+  app/api/      # API Routes (proxy, ssh-exec, log-fetcher)
+  components/   # Shared UI components (Tailwind + Radix)
+  lib/          # Core utilities (Purification rules, Formatters)
+  store/        # Zustand global state (Persisted via LocalStorage & config.json)
 ```
 
-## Tech Stack
+## 💻 Tech Stack
 
-- **Frontend**: Next.js, React, Tailwind CSS, Radix UI, Lucide React
-- **State**: Zustand (with localStorage persistence)
-- **AI**: Any OpenAI-compatible API (SSE streaming)
-- **Backend**: Node.js, node-ssh, iconv-lite (GBK encoding support)
+- **Frontend**: Next.js (App Router), React, Tailwind CSS, Radix UI, Zustand, Lucide
+- **Backend**: Node.js, node-ssh, iconv-lite
+- **AI Engine**: Standard OpenAI/Anthropic Messages REST API (SSE streaming support)
 
 ---
-
-Developed for UniDev CRM Log Analysis.
+*Built to bring order, clarity, and AI-driven insights to distributed server logs.*
