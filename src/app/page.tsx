@@ -78,7 +78,7 @@ const DEFAULT_XML_BODY = `<?xml version="1.0" encoding="GBK"?>
 function extractTxIdFromXml(xml: string): string | null {
   if (!xml) return null;
   
-  // 1. Technical identifiers — higher signal for BSSP/TE logs
+  // 1. Technical identifiers — higher signal for application logs
   const txPatterns = [
     /<(?:tx_id|txId|transId|TRANS_CODE|ORDER_ID|SERIAL_NO|tx_serial_no|SerialID|serialId|FlowNo|flowNo|BatchNo)[^>]*>\s*([^<\s]+)\s*<\//i,
     /txId[:=]\s*([A-Za-z0-9_-]+)/i,

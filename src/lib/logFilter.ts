@@ -25,7 +25,7 @@ export function filterHighValueLogs(logs: LogEntry[]): LogEntry[] {
   // Common specific markers in traditional Java logs (Spring, Tomcat, TongWeb)
   const tracingPattern = /(\[DispatcherServlet\]|Mapped to|Controller|Handler|Service|SQL:)/i;
 
-  // Framework internal noise blacklist (BSSP/SAC/CRT specific execution traces)
+  // Framework internal noise blacklist (Application specific execution traces)
   const frameworkInternalBlacklist = [
     "getVariable",
     "ReleaseSem",

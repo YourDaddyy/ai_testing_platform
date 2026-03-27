@@ -1,3 +1,0 @@
-﻿src/app/api/ai/route.ts(3,10): error TS2459: Module '"../logs/route"' declares 'LogEntry' locally, but it is not exported.
-src/app/config/page.tsx(649,69): error TS2322: Type '{ children: Element; asChild: true; }' is not assignable to type 'IntrinsicAttributes & NativeButtonProps & Omit<WithBaseUIEvent<DetailedHTMLProps<ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>>, "color" | ... 2 more ... | "defaultChecked"> & { ...; } & { ...; }'.
-  Property 'asChild' does not exist on type 'IntrinsicAttributes & NativeButtonProps & Omit<WithBaseUIEvent<DetailedHTMLProps<ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>>, "color" | ... 2 more ... | "defaultChecked"> & { ...; } & { ...; }'.

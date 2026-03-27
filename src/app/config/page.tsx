@@ -85,7 +85,7 @@ export default function ConfigPage() {
       id: `env-${Date.now()}`,
       name: "新环境",
       hosts: {
-        bssp: [{ sshHost: "10.47.213.184", label: "BSSP" }],
+        app: [{ sshHost: "192.168.1.100", label: "App-Node-1" }],
         sac: [{ sshHost: "10.47.213.26", label: "SAC" }],
         te: [{ sshHost: "10.46.180.92", label: "TE" }],
       },

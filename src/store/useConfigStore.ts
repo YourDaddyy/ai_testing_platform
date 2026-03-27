@@ -12,50 +12,50 @@ export interface ServiceType {
 // Default service seeds — migrated from serviceLogConfigs.ts
 export const DEFAULT_SERVICE_TYPES: ServiceType[] = [
   {
-    id: "bssp",
-    label: "BSSP",
-    encoding: "gbk",
-    grepTemplate: `{ find /bosslog1/bssp/log -maxdepth 1 -name "sfc.log.1.*$(date +%F)*" 2>/dev/null; find /bosslog1/bssp/log/trace -name "sfc*" 2>/dev/null; } | xargs -r grep -aH "{KEY}" | tail -2000`,
+    id: "app",
+    label: "AppService",
+    encoding: "utf8",
+    grepTemplate: `{ find /var/log/app -maxdepth 1 -name "service.log.*$(date +%F)*" 2>/dev/null; find /var/log/app/trace -name "flow*" 2>/dev/null; } | xargs -r grep -aH "{KEY}" | tail -2000`,
     color: "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700",
   },
   {
-    id: "sac",
-    label: "SAC",
-    encoding: "gbk",
-    grepTemplate: `find /bosslog1/sac/applog -maxdepth 4 -type f -mtime -3 2>/dev/null | xargs -r grep -aH "{KEY}" | tail -2000`,
+    id: "api",
+    label: "API Gateway",
+    encoding: "utf8",
+    grepTemplate: `find /var/log/api -maxdepth 4 -type f -mtime -3 2>/dev/null | xargs -r grep -aH "{KEY}" | tail -2000`,
     color: "bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/50 dark:text-purple-300 dark:border-purple-700",
   },
   {
-    id: "cmc",
-    label: "CMC",
-    encoding: "gbk",
+    id: "database",
+    label: "Database Node",
+    encoding: "utf8",
     grepTemplate: "",
     color: "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700",
   },
   {
-    id: "bop",
-    label: "BOP",
-    encoding: "gbk",
-    grepTemplate: `grep -aH "{KEY}" /bossapp1/TongWeb4.0/bin/boss_record_public.log | tail -2000`,
+    id: "payment",
+    label: "Payment",
+    encoding: "utf8",
+    grepTemplate: `grep -aH "{KEY}" /opt/tomcat/logs/catalina.out | tail -2000`,
     color: "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700",
   },
   {
-    id: "te",
-    label: "TE",
-    encoding: "gbk",
-    grepTemplate: `find /bosslog1/applog/bm -maxdepth 2 -name "BM_TE_SERVICE*" | xargs -r grep -aH "{KEY}" | tail -2000`,
+    id: "cache",
+    label: "Cache Cluster",
+    encoding: "utf8",
+    grepTemplate: `find /var/log/redis -maxdepth 2 -name "redis*" | xargs -r grep -aH "{KEY}" | tail -2000`,
     color: "bg-pink-100 text-pink-700 border-pink-300 dark:bg-pink-900/50 dark:text-pink-300 dark:border-pink-700",
   },
   {
-    id: "cs",
-    label: "CS",
-    encoding: "gbk",
-    grepTemplate: `find /bosslog1/applog/cs/log -maxdepth 2 -name "CS_SERVICE*" | xargs -r grep -aH "{KEY}" | tail -2000`,
+    id: "auth",
+    label: "Auth Server",
+    encoding: "utf8",
+    grepTemplate: `find /var/log/auth -maxdepth 2 -name "auth_service*" | xargs -r grep -aH "{KEY}" | tail -2000`,
     color: "bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-700",
   },
   {
     id: "container",
-    label: "容器云",
+    label: "Container Node",
     encoding: "utf8",
     grepTemplate: "",
     color: "bg-teal-100 text-teal-700 border-teal-300 dark:bg-teal-900/50 dark:text-teal-300 dark:border-teal-700",
@@ -84,12 +84,12 @@ export interface Environment {
   id: string;
   name: string;
   hosts: {
-    bssp?: HostCredentials[];
-    sac?: HostCredentials[];
-    cmc?: HostCredentials[];
-    te?: HostCredentials[];
-    bop?: HostCredentials[];
-    cs?: HostCredentials[];
+    app?: HostCredentials[];
+    api?: HostCredentials[];
+    database?: HostCredentials[];
+    payment?: HostCredentials[];
+    cache?: HostCredentials[];
+    auth?: HostCredentials[];
     [key: string]: HostCredentials[] | undefined;
   };
   scripts?: ServiceScript[];
@@ -158,9 +158,9 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
   aiBaseUrl: "https://api.anthropic.com/v1/messages",
   serviceTypes: DEFAULT_SERVICE_TYPES,
   commonUrls: [
-    { id: "1", label: "生产环境", url: "http://10.47.213.184:8080/fcgi-bin/BSSP_SFC" },
-    { id: "2", label: "测试环境", url: "http://10.47.211.12:8080/fcgi-bin/BSSP_SFC" },
-    { id: "3", label: "回归环境", url: "http://10.47.213.184:8081/fcgi-bin/BSSP_SFC" },
+    { id: "1", label: "Production API", url: "https://api.example.com/v1/health" },
+    { id: "2", label: "Staging API", url: "https://staging-api.example.com/v1/health" },
+    { id: "3", label: "Dev Local", url: "http://127.0.0.1:8080/health" },
   ],
   remoteControlState: {
     lastEnvId: null,
@@ -191,9 +191,9 @@ export const useConfigStore = create<ConfigState>()((set, get) => ({
             return st;
           }),
           commonUrls: data.commonUrls ?? [
-            { id: "1", label: "生产环境", url: "http://10.47.213.184:8080/fcgi-bin/BSSP_SFC" },
-            { id: "2", label: "测试环境", url: "http://10.47.211.12:8080/fcgi-bin/BSSP_SFC" },
-            { id: "3", label: "回归环境", url: "http://10.47.213.184:8081/fcgi-bin/BSSP_SFC" },
+            { id: "1", label: "Production API", url: "https://api.example.com/v1/health" },
+            { id: "2", label: "Staging API", url: "https://staging-api.example.com/v1/health" },
+            { id: "3", label: "Dev Local", url: "http://127.0.0.1:8080/health" },
           ],
           remoteControlState: data.remoteControlState ?? {
             lastEnvId: null,

@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
    - 用一句话描述发生了什么问题（如：下单接口返回互斥错误）。
    - **可视化调用链**: 请使用 Mermaid 流程图描述涉及的系统调用关系，并用红色标出最后出现故障或报错的节点。
    - **Mermaid 规范 (必须严格遵守)**: 
-     1. 节点标签必须使用双引号包裹，例如: BSSP["BSSP 核心"]。
+     1. 节点标签必须使用双引号包裹，例如: App["App 核心"]。
      2. 避免在标签中使用括号、单引号或特殊符号。
-     3. 失败点示例: style BSSP fill:#f96,stroke:#333。
+     3. 失败点示例: style App fill:#f96,stroke:#333。
      \`\`\`mermaid
      graph LR
-       BOP["BOP 前端"] --> BSSP["BSSP 核心"]
-       BSSP -- "失败" --> SAC["SAC 鉴权"]
-       style BSSP fill:#f96,stroke:#333
+       API["API 网关"] --> App["App 核心"]
+       App -- "失败" --> DB["数据库"]
+       style App fill:#f96,stroke:#333
      \`\`\`
 
 2. **核心证据链 (Evidence & Analysis)**:

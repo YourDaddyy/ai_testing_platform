@@ -51,12 +51,12 @@ const LEVEL_CONFIG = {
 
 // Theme-aware source badge colors
 const SOURCE_COLORS: Record<string, string> = {
-  bssp:      "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700",
-  sac:       "bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/50 dark:text-purple-300 dark:border-purple-700",
-  cmc:       "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700",
+  app:       "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700",
+  api:       "bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/50 dark:text-purple-300 dark:border-purple-700",
+  database:  "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700",
   container: "bg-teal-100 text-teal-700 border-teal-300 dark:bg-teal-900/50 dark:text-teal-300 dark:border-teal-700",
-  te:        "bg-pink-100 text-pink-700 border-pink-300 dark:bg-pink-900/50 dark:text-pink-300 dark:border-pink-700",
-  bop:       "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700",
+  auth:        "bg-pink-100 text-pink-700 border-pink-300 dark:bg-pink-900/50 dark:text-pink-300 dark:border-pink-700",
+  payment:       "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700",
 };
 
 // Patterns to extract transaction ID from XML/response body.
@@ -160,27 +160,27 @@ export interface InlineLogsTabProps {
 const DEMO_LOGS: LogEntry[] = [
   {
     id: "d1", timestamp: new Date(Date.now() - 6000).toISOString(),
-    source: "bssp", sourceLabel: "BSSP", level: "INFO",
-    message: "[CS_NGModifyGroupProductCloud] Request received",
-    raw: "2024-03-16 10:00:01.123 INFO [CS_NGModifyGroupProductCloud] Request received\n  src_sys_code=CRM\n  operator=user001",
+    source: "api", sourceLabel: "API Gateway", level: "INFO",
+    message: "[CreateOrder] Request received",
+    raw: "2024-03-16 10:00:01.123 INFO [CreateOrder] Request received\n  src_sys_code=WEB\n  operator=user001",
   },
   {
     id: "d2", timestamp: new Date(Date.now() - 5500).toISOString(),
-    source: "bssp", sourceLabel: "BSSP", level: "INFO",
-    message: "Calling downstream SAC service: url=http://10.47.213.26:8080/sac",
-    raw: "2024-03-16 10:00:01.456 INFO  Calling downstream SAC service: url=http://10.47.213.26:8080/sac",
+    source: "app", sourceLabel: "AppService", level: "INFO",
+    message: "Calling downstream payment service: url=http://192.168.1.150:8080/pay",
+    raw: "2024-03-16 10:00:01.456 INFO  Calling downstream payment service: url=http://192.168.1.150:8080/pay",
   },
   {
     id: "d3", timestamp: new Date(Date.now() - 4000).toISOString(),
-    source: "sac", sourceLabel: "SAC", level: "WARN",
+    source: "database", sourceLabel: "Database", level: "WARN",
     message: "DB connection pool 80% utilised, query may be slow",
     raw: "2024-03-16 10:00:02.100 WARN  DB connection pool 80% utilised\n  pool_size=20, used=16",
   },
   {
     id: "d4", timestamp: new Date(Date.now() - 3000).toISOString(),
-    source: "bssp", sourceLabel: "BSSP", level: "ERROR",
-    message: "CMC response error: ORA-00001, rolling back transaction",
-    raw: "2024-03-16 10:00:02.800 ERROR CMC response error: ORA-00001, rolling back transaction",
+    source: "payment", sourceLabel: "Payment", level: "ERROR",
+    message: "Payment gateway response error: TIMEOUT, rolling back transaction",
+    raw: "2024-03-16 10:00:02.800 ERROR Payment gateway response error: TIMEOUT, rolling back transaction",
   },
 ];
 

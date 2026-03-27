@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const responseBuffer = Buffer.from(await response.arrayBuffer());
 
     // Detect encoding with a 3-tier strategy:
-    // 1. Check XML declaration in the raw bytes (most reliable for BSSP/SAC responses)
+    // 1. Check XML declaration in the raw bytes (reliable for XML payloads)
     // 2. Check Content-Type header
     // 3. Fall back to the same encoding used for the request
     const rawSnippet = responseBuffer.slice(0, 200).toString("ascii");
