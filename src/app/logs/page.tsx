@@ -95,7 +95,9 @@ export default function LogsPage() {
   const { environments, activeEnvId, serviceTypes } = useConfigStore();
   const [queryKey, setQueryKey] = useState("");
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
-  const [hasQueried, setHasQueried] = useState(false);
+  const [hasInitiatedSearch, setHasInitiatedSearch] = useState(false);
+  const queriedSources = useLogStore((state) => state.queriedBySource);
+  const hasQueried = hasInitiatedSearch || Object.values(queriedSources).some(Boolean);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -112,12 +114,9 @@ export default function LogsPage() {
       setSelectedSources(new Set(serviceTypes.slice(0, 3).map(s => s.id)));
     }
 
-    // Restore keyword only — do NOT restore hasQueried or re-run search
+    // Restore keyword only
     const lastQuery = localStorage.getItem(STORAGE_KEY_QUERY);
     if (lastQuery) setQueryKey(lastQuery);
-
-    // Clear any stale log results from previous session
-    useLogStore.getState().clearAllLogs();
   }, []);
 
   // 2. Persistence saving
@@ -163,7 +162,7 @@ export default function LogsPage() {
       return;
     }
 
-    setHasQueried(true);
+    setHasInitiatedSearch(true);
     setAutoQueryKey(`${queryKey.trim()}__${Date.now()}`);
   };
 

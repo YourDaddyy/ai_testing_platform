@@ -1,11 +1,11 @@
 # CRM AI Platform
 
-An AI-powered log analysis tool for distributed CRM systems. Search logs across multiple servers by transaction ID, then get a full AI diagnosis of what went wrong.
+An AI-powered log analysis tool for distributed CRM systems. Search logs across multiple servers by transaction ID, then get a full AI diagnosis of what happened across the full request chain.
 
 ## Teammate Setup
 
 1. Unzip the distribution package
-2. Copy `.env.example` → `.env.local` and fill in your `ANTHROPIC_API_KEY`
+2. Copy `.env.example` → `.env.local` (no API keys needed in `.env` — configure in the UI)
 3. Double-click `scripts/runtime/start-app.bat` — Chrome opens automatically in ~5 seconds
 
 > No build step needed. The package includes a pre-built server.
@@ -14,13 +14,17 @@ An AI-powered log analysis tool for distributed CRM systems. Search logs across 
 
 ## Features
 
-- **Multi-source log aggregation** — Fetch logs from BSSP, SAC, CMC, TE, BOP via SSH, all nodes searched in parallel
-- **AI diagnosis** — Full end-to-end chain analysis using Claude; identifies bottlenecks, logic conflicts, and error nodes
-- **GBK encoding support** — Log files decoded on the Node.js side via iconv-lite; no server-side conversion needed
-- **Per-service grep patterns** — Each service type (BSSP, TE, etc.) uses its own search command defined in `serviceLogConfigs.ts`; shared across all environments automatically
-- **File grouping** — Results grouped by source file in collapsible accordion view
-- **Shared config** — Settings stored server-side in `config.json`; consistent across all browsers and team members on the same machine
+- **Multi-source log aggregation** — Fetch logs from BSSP, SAC, CMC, TE, BOP via SSH in parallel
+- **Decoupled search & analysis** — Search logs first to preview; trigger AI analysis separately when ready
+- **High-value log purification** — Built-in noise filter that strips DEBUG/TRACE noise, deduplicates repeated payloads via content fingerprinting, and surfaces only meaningful signals (errors, SQL, XML/JSON payloads, key request/response lines)
+- **Realtime filter toggle** — Switch between purified and raw log views instantly without re-fetching
+- **AI diagnosis** — Full end-to-end chain analysis using any OpenAI-compatible API (GLM, Claude, GPT, etc.); identifies bottlenecks, logic conflicts, and error nodes with log references
+- **Log jump links** — AI report references `[Log #N]` inline; click to scroll and highlight the exact log entry
+- **GBK encoding support** — Log files decoded on the Node.js side via `iconv-lite`; no server-side conversion needed
+- **Per-service grep patterns** — Each service type uses its own search command defined in the Config UI
+- **Shared config** — Settings stored server-side in `config.json`; consistent across all browsers on the same machine
 - **Response formatting** — Auto-detects and pretty-prints JSON/XML payloads
+- **Remote batch control** — Execute commands across multiple hosts simultaneously
 
 ## Quick Start (Development)
 
@@ -31,12 +35,15 @@ npm run dev
 
 Visit [http://localhost:3000](http://localhost:3000).
 
+## AI Configuration
+
+AI settings (API Key, Model, Base URL) are configured **in the UI** under the Config → AI tab. No environment variables needed. Supports any OpenAI-compatible endpoint.
+
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in:
+Copy `.env.example` to `.env.local`. The only required variable is:
 
 ```env
-ANTHROPIC_API_KEY=your_key_here
 CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
 ```
 
@@ -69,37 +76,33 @@ chmod +x scripts/runtime/start-app.sh
 
 ## Adding or Changing Log Search Patterns
 
-Log paths and grep commands are defined per service type in `src/lib/serviceLogConfigs.ts`. Changes here apply to **all environments** (test, regression, etc.) automatically — no UI config needed.
+Log paths and grep commands are configured per service type in the **Config UI** under the service types section. Each service type stores its own `grepTemplate` and `encoding`. Changes apply to all environments automatically.
 
-```ts
-// Example: change the TE grep pattern
-te: {
-  encoding: "gbk",
-  grepTemplate: `find /bosslog1/applog/bm -maxdepth 2 -name "BM_TE_SERVICE*" | xargs -r grep -aH "{KEY}" | tail -2000`,
-},
-```
-
-To add a new environment or server node, edit `src/lib/defaultEnvironments.ts` — only SSH connection info (host, port, username, password) belongs there.
+To add a new environment or server node, use the Config UI to add hosts and assign them to an environment.
 
 ## Project Structure
 
 ```text
-src/            # Next.js pages, API routes, and logic
-scripts/        # Management scripts
-  runtime/      # Start/Stop app and docker
+src/
+  app/          # Next.js pages (home, ai, config, logs, remote-control)
+  app/api/      # API routes (ai, config, logs, proxy, remote-exec)
+  components/   # Shared UI components
+  lib/          # Utilities (logFilter, logProcessor, i18n, etc.)
+  store/        # Zustand stores (ai, config, http, log)
+scripts/
+  runtime/      # Start/Stop scripts
   build/        # Packaging and deployment
 docker/         # Dockerfile, compose, and environment configs
-public/         # Static assets
+data/           # Merged host configs (generated)
 config.json     # Persisted environment & host configurations
 ```
 
 ## Tech Stack
 
 - **Frontend**: Next.js, React, Tailwind CSS, Radix UI, Lucide React
-- **State**: Zustand (server-side persistence via `config.json`)
-- **AI**: Claude API (SSE streaming)
+- **State**: Zustand (with localStorage persistence)
+- **AI**: Any OpenAI-compatible API (SSE streaming)
 - **Backend**: Node.js, node-ssh, iconv-lite (GBK encoding support)
-- **Editor**: Monaco Editor
 
 ---
 

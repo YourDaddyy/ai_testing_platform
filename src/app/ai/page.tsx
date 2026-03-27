@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useRef, Children, isValidElement, default as React } from "react";
+import { useState, useEffect, Suspense, useRef, default as React } from "react";
 import { useSearchParams } from "next/navigation";
 import { useConfigStore } from "@/store/useConfigStore";
 import { useLogStore } from "@/store/useLogStore";
@@ -10,18 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { 
-  Activity, 
-  BrainCircuit, 
-  ChevronRight, 
-  AlertCircle, 
-  CheckCircle2,
-  ListRestart,
+import {
+  Activity,
+  BrainCircuit,
+  ChevronRight,
+  AlertCircle,
   ArrowLeft,
   Search,
-  Zap,
   ExternalLink,
   Loader2,
   X
@@ -52,15 +48,15 @@ const Mermaid = ({ chart }: { chart: string }) => {
   useEffect(() => {
     const validateAndRender = async () => {
       if (!ref.current || !chart) return;
-      
+
       try {
         // Only attempt to render if the syntax is valid
         await mermaid.parse(chart);
         setLastValidChart(chart);
-        
+
         ref.current.removeAttribute("data-processed");
         const { svg } = await mermaid.render(`mermaid-${Math.random().toString(36).substring(2, 11)}`, chart);
-        
+
         // Final check before updating DOM as this is async
         const currentRef = ref.current;
         if (currentRef) {
@@ -84,33 +80,36 @@ function AiPageContent() {
   const txIdParam = searchParams.get("txId") || "";
   const sourcesParam = searchParams.get("sources");
   const autoRunParam = searchParams.get("autoRun") === "true";
-  
+
   const { body: httpRequestBody, response: httpResponse } = useHttpStore();
   const { environments, activeEnvId, serviceTypes } = useConfigStore();
   const activeEnv = environments.find(e => e.id === activeEnvId) || environments[0];
-  
+
   const targetSources = sourcesParam ? sourcesParam.split(",") : serviceTypes.map(s => s.id);
-  
+
   // Persistent state from AiStore
-  const { 
-    analysisText, 
-    status, 
-    targetTxId, 
+  const {
+    analysisText,
+    status,
+    targetTxId,
+    rawLogs,
     displayLogs,
-    setAnalysisText, 
-    setStatus, 
-    setTargetTxId, 
+    setAnalysisText,
+    setStatus,
+    setTargetTxId,
+    setRawLogs,
     setDisplayLogs,
-    reset 
+    reset
   } = useAiStore();
-  
+
   const [txId, setTxId] = useState(targetTxId || txIdParam);
   const [requestBody, setRequestBody] = useState<string | null>(httpRequestBody);
   const [response, setResponse] = useState<any>(httpResponse);
   const [highlightedLogId, setHighlightedLogId] = useState<string | null>(null);
   const [showHighValueOnly, setShowHighValueOnly] = useState<boolean>(true);
+  const [isFetching, setIsFetching] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
-  
+
   const logsBySource = useLogStore((s) => s.logsBySource);
 
   // Sync txId when targetTxId changes (e.g. from store or navigation)
@@ -133,18 +132,18 @@ function AiPageContent() {
     if (element) {
       // Find the nearest radix scroll viewport for precise control
       const viewport = element.closest('[data-radix-scroll-area-viewport]');
-      
+
       if (viewport) {
         // GOLD STANDARD: Calculate precise relative offset
         const parentRect = viewport.getBoundingClientRect();
         const elementRect = element.getBoundingClientRect();
         const relativeTop = elementRect.top - parentRect.top + viewport.scrollTop;
-        
-        viewport.scrollTo({ 
+
+        viewport.scrollTo({
           top: relativeTop - 100, // Leave some buffer at top
-          behavior: 'smooth' 
+          behavior: 'smooth'
         });
-        
+
         // Brief highlight effect on the target
         setHighlightedLogId(finalId);
         setTimeout(() => setHighlightedLogId(null), 3000);
@@ -154,25 +153,24 @@ function AiPageContent() {
     }
   };
 
-  // Function to fetch logs only (new decouple flow)
+  // Function to fetch logs only (decoupled from AI analysis)
   const fetchLogsOnly = async (idToFetch = txId) => {
     if (!idToFetch) {
       toast.error("请输入追踪标识 (ACCEPT ID / TX ID)");
       return;
     }
-    
-    setStatus("fetching");
+
+    // 使用独立的 isFetching，不影响右侧 status
+    setIsFetching(true);
     setDisplayLogs([]);
-    
+
     try {
-      // Build service configs dictionary for backend grep execution
       const serviceConfigs = targetSources.reduce((acc, sourceId) => {
         const svc = serviceTypes.find(s => s.id === sourceId);
         if (svc) acc[sourceId] = { encoding: svc.encoding, grepTemplate: svc.grepTemplate, label: svc.label };
         return acc;
       }, {} as Record<string, any>);
 
-      // Logic from runAnalysis but without AI analysis trigger
       const logRes = await fetch("/api/logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -184,30 +182,33 @@ function AiPageContent() {
           serviceConfigs,
         }),
       });
-      
+
       const logData = await logRes.json();
       const fetchedLogs = logData.logs || [];
-      
+
       const processedLogs = fetchedLogs.map((l: any, i: number) => ({
         ...l,
         index: i + 1,
-        id: l.id || `log-${i}-${Date.now()}` // Ensure unique ID
+        id: l.id || `log-${i}-${Date.now()}`
       }));
-      setDisplayLogs(processedLogs);
-      
+
+      // 保存全量原始日志，供切换过滤模式时使用
+      setRawLogs(processedLogs);
+
+      // 应用高价值提纯过滤
+      const filtered = showHighValueOnly ? filterHighValueLogs(processedLogs) : processedLogs;
+      setDisplayLogs(filtered);
+
       if (fetchedLogs.length > 0) {
-        toast.success(`负载成功: ${fetchedLogs.length} 条日志`);
-        setStatus("idle"); // Set to idle after fetching logs
+        toast.success(`查询成功: ${filtered.length} 条日志 (共 ${fetchedLogs.length} 条)`);
       } else {
         toast.error("未查询到相关日志");
-        setStatus("error");
-        setAnalysisText("未找到该流水号的相关日志，请确认流水号是否正确。");
       }
     } catch (error: any) {
       console.error("Fetch logs failed:", error);
       toast.error("查询日志失败，请稍后重试");
-      setStatus("error");
-      setAnalysisText("加载日志失败: " + error.message);
+    } finally {
+      setIsFetching(false);
     }
   };
 
@@ -240,25 +241,25 @@ function AiPageContent() {
           serviceConfigs,
         }),
       });
-      
+
       const logData = await logRes.json();
       const fetchedLogs = logData.logs || [];
-      
+
       const processedLogs = fetchedLogs.map((l: any, i: number) => ({
         ...l,
         index: i + 1,
         id: l.id || `log-${i}-${Date.now()}` // Ensure unique ID
       }));
-      
+
       const targetFilteredLogs = showHighValueOnly ? filterHighValueLogs(processedLogs) : processedLogs;
       setDisplayLogs(targetFilteredLogs);
-      
+
       if (fetchedLogs.length === 0) {
         setStatus("error");
         setAnalysisText("未找到该流水号的相关日志，无法进行分析。");
         return;
       }
-      
+
       // Trigger AI Analysis with filtered logs
       performAiAnalysis(targetFilteredLogs);
     } catch (err: any) {
@@ -288,7 +289,7 @@ function AiPageContent() {
   const performAiAnalysis = async (targetLogs: any[]) => {
     setStatus("analyzing");
     setAnalysisText("");
-    
+
     // Create new abort controller
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
@@ -302,7 +303,7 @@ function AiPageContent() {
           apiKey: useConfigStore.getState().aiApiKey,
           model: useConfigStore.getState().aiModel,
           baseUrl: useConfigStore.getState().aiBaseUrl,
-          requestBody: requestBody || "", 
+          requestBody: requestBody || "",
           responseBody: response?.body || "",
           logs: logsBySource && Object.keys(logsBySource).length > 0 ? logsBySource : { merged: targetLogs },
           userQuestion: "请对该业务流水进行完整的全链路追踪分析，指出性能瓶颈、逻辑冲突或潜在的错误节点。请在分析时，涉及到具体日志行的地方，务必使用 [Log #N] 的格式进行引用（例如 [Log #10]），以便系统自动关联跳转。",
@@ -317,25 +318,25 @@ function AiPageContent() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        
+
         // Process buffer by lines
         const lines = buffer.split("\n");
         // Keep the last partial line in the buffer
         buffer = lines.pop() || "";
-        
+
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
-          
+
           if (trimmed.startsWith("data: ")) {
             const data = trimmed.slice(6);
             if (data === "[DONE]") {
               setStatus("done");
               break;
             }
-            
+
             try {
               const partial = JSON.parse(data);
               const content = partial.choices?.[0]?.delta?.content || partial.content || "";
@@ -377,10 +378,10 @@ function AiPageContent() {
       setTargetTxId(txIdParam);
       setTxId(txIdParam);
     }
-    
+
     const existingLogs = Object.values(logsBySource).flat();
     const currentId = txIdParam || targetTxId;
-    
+
     if (existingLogs.length > 0) {
       setDisplayLogs(existingLogs);
       // Only auto-run if we are in idle state or it's a new ID
@@ -415,8 +416,8 @@ function AiPageContent() {
             <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
             <span className="text-[10px] font-mono font-medium text-muted-foreground uppercase">{activeEnv?.name || "测试环境"}</span>
           </div>
-          <Button 
-            onClick={() => runAnalysis()} 
+          <Button
+            onClick={() => displayLogs.length > 0 ? performAiAnalysis(displayLogs) : runAnalysis()}
             disabled={status === "fetching" || status === "analyzing"}
             className="gap-2 shadow-lg shadow-primary/20 h-10 px-6 font-bold"
           >
@@ -443,7 +444,7 @@ function AiPageContent() {
                       </label>
                       <div className="flex gap-2">
                         <div className="relative flex-1 group">
-                          <Input 
+                          <Input
                             value={txId}
                             onChange={(e) => setTxId(e.target.value)}
                             placeholder="输入事务 ID..."
@@ -451,7 +452,7 @@ function AiPageContent() {
                             onKeyDown={(e) => e.key === "Enter" && fetchLogsOnly()}
                           />
                           {txId && (
-                            <button 
+                            <button
                               onClick={() => {
                                 setTxId("");
                                 reset();
@@ -462,14 +463,14 @@ function AiPageContent() {
                             </button>
                           )}
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="default" 
+                        <Button
+                          variant="outline"
+                          size="default"
                           onClick={() => fetchLogsOnly()}
-                          disabled={status === "fetching" || status === "analyzing"}
+                          disabled={isFetching}
                           className="h-11 px-4 border-primary/20 hover:bg-primary/5 text-xs font-semibold shrink-0"
                         >
-                          {status === "fetching" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                         </Button>
                       </div>
                       <p className="text-[9px] text-muted-foreground/60 italic">提示：先点击搜索图标加载日志，确认无误后再点击右上角进行深度分析。</p>
@@ -530,10 +531,14 @@ function AiPageContent() {
                     <div className="flex items-center gap-3">
                       <CardTitle className="text-sm font-semibold tracking-tight">多维日志时间轴</CardTitle>
                       <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={showHighValueOnly} 
-                          onChange={(e) => setShowHighValueOnly(e.target.checked)}
+                        <input
+                          type="checkbox"
+                          checked={showHighValueOnly}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setShowHighValueOnly(checked);
+                            setDisplayLogs(checked ? filterHighValueLogs(rawLogs) : rawLogs);
+                          }}
                           className="w-3 h-3 accent-primary"
                         />
                         <span className="text-[10px] text-muted-foreground font-medium">高价值提纯模式</span>
@@ -543,16 +548,16 @@ function AiPageContent() {
                   </CardHeader>
                   <CardContent className="px-0 pb-0 pt-0 relative overflow-hidden">
                     <div className="relative py-2 pr-2">
-                    {/* Main Axis Line - Bold Black - Precisely at 36px */}
-                    <div className="absolute left-[36px] top-0 bottom-0 w-[1.5px] bg-black/90 z-0" />
+                      {/* Main Axis Line - Bold Black - Precisely at 36px */}
+                      <div className="absolute left-[36px] top-0 bottom-0 w-[1.5px] bg-black/90 z-0" />
 
-                    <div className="space-y-0.5">
-                      {displayLogs.map((log, i) => {
+                      <div className="space-y-0.5">
+                        {displayLogs.map((log, i) => {
                           const logId = `log-idx-${i + 1}`;
                           const isHighlighted = highlightedLogId === logId;
 
                           return (
-                            <div 
+                            <div
                               key={logId}
                               id={logId}
                               className={cn(
@@ -607,9 +612,9 @@ function AiPageContent() {
               <CardTitle className="text-base font-bold tracking-tight">AI 诊断报告 (AI Diagnostic Report)</CardTitle>
             </div>
             {status === "analyzing" ? (
-              <Button 
-                variant="destructive" 
-                size="sm" 
+              <Button
+                variant="destructive"
+                size="sm"
                 onClick={stopAnalysis}
                 className="h-7 px-3 gap-1.5 text-[10px] font-bold shadow-lg shadow-destructive/20"
               >
@@ -628,7 +633,7 @@ function AiPageContent() {
               <ScrollArea className="h-full w-full">
                 <div className="p-8 prose prose-sm dark:prose-invert max-w-none">
                   {analysisText ? (
-                    <ReactMarkdown 
+                    <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
                         code({ node, inline, className, children, ...props }: any) {
@@ -647,11 +652,11 @@ function AiPageContent() {
                               // Enhanced regex for citation formats: [Log #N], [Log N], [N], [#N], 第N行, 日志 #N
                               const citationRegex = /((?:\[(?:Log\s?#?|#|日志\s?#?|第)?\d+\])|(?:日志\s?#?\d+)|(?:第\d+行))/gi;
                               const parts = content.split(citationRegex);
-                              
+
                               return parts.map((part, i) => {
                                 const numMatch = part.match(/(\d+)/);
                                 const index = numMatch ? parseInt(numMatch[1], 10) : null;
-                                
+
                                 if (index && !isNaN(index)) {
                                   return (
                                     <button
@@ -699,21 +704,21 @@ function AiPageContent() {
                 </div>
               </ScrollArea>
             )}
-            
+
             {(status === "idle" || status === "done") && analysisText && (
               <div className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/50 rounded-lg text-green-500 text-[10px] font-bold shadow-2xl animate-in fade-in zoom-in duration-500 backdrop-blur-md">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+                <Activity className="h-3.5 w-3.5" />
                 <span>分析已完成 (Analysis Completed)</span>
               </div>
             )}
-            
+
             {status === "stopped" && (
               <div className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border border-yellow-500/50 rounded-lg text-yellow-500 text-[10px] font-bold shadow-2xl animate-in fade-in zoom-in duration-500 backdrop-blur-md">
                 <AlertCircle className="h-3.5 w-3.5" />
                 <span>分析已中断 (Analysis Aborted)</span>
               </div>
             )}
-            
+
             {status === "error" && (
               <div className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-[10px] font-bold shadow-2xl animate-in fade-in zoom-in duration-500 backdrop-blur-md">
                 <AlertCircle className="h-3.5 w-3.5" />
