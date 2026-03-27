@@ -646,17 +646,14 @@ export default function ConfigPage() {
                                                   />
                                                   
                                                   <Popover>
-                                                    <PopoverTrigger asChild>
-                                                      <button
-                                                        type="button"
-                                                        className={cn(
-                                                          buttonVariants({ variant: "outline", size: "sm" }),
-                                                          "w-[32px] h-8 px-0 bg-muted/50 border-dashed"
-                                                        )}
-                                                        title="快捷导入配置"
-                                                      >
-                                                        <Search className="h-3 w-3 opacity-50" />
-                                                      </button>
+                                                    <PopoverTrigger
+                                                      className={cn(
+                                                        buttonVariants({ variant: "outline", size: "sm" }),
+                                                        "w-[32px] h-8 px-0 bg-muted/50 border-dashed"
+                                                      )}
+                                                      title="快捷导入配置"
+                                                    >
+                                                      <Search className="h-3 w-3 opacity-50" />
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-[300px] p-0" align="end">
                                                       <Command filter={(value, search) => {

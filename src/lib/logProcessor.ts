@@ -1,4 +1,10 @@
-import { LogEntry } from "../app/api/logs/route";
+import { LogEntry } from "@/types";
+
+/**
+ * @fileoverview Log Data Formatter
+ * @responsibility Defines HOW log lines are parsed, colorized, grouped, and rendered.
+ *                 It does not drop data, only transforms strings into structural nodes.
+ */
 
 /**
  * Log Cleaning Engine

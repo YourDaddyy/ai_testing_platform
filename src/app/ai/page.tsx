@@ -94,11 +94,13 @@ function AiPageContent() {
     targetTxId,
     rawLogs,
     displayLogs,
+    showHighValueOnly,
     setAnalysisText,
     setStatus,
     setTargetTxId,
     setRawLogs,
     setDisplayLogs,
+    setShowHighValueOnly,
     reset
   } = useAiStore();
 
@@ -106,7 +108,6 @@ function AiPageContent() {
   const [requestBody, setRequestBody] = useState<string | null>(httpRequestBody);
   const [response, setResponse] = useState<any>(httpResponse);
   const [highlightedLogId, setHighlightedLogId] = useState<string | null>(null);
-  const [showHighValueOnly, setShowHighValueOnly] = useState<boolean>(true);
   const [isFetching, setIsFetching] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 

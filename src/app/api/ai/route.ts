@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { buildAILogContext } from "@/lib/logProcessor";
-import { LogEntry } from "../logs/route";
+import { LogEntry } from "@/types";
 
 export async function POST(req: NextRequest) {
   try {

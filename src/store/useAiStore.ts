@@ -1,21 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-
-interface AiState {
-  analysisText: string;
-  status: "idle" | "fetching" | "fetching_logs" | "analyzing" | "done" | "error" | "stopped";
-  targetTxId: string;
-  rawLogs: any[];
-  displayLogs: any[];
-  showHighValueOnly: boolean;
-  setAnalysisText: (text: string | ((prev: string) => string)) => void;
-  setStatus: (status: AiState['status']) => void;
-  setTargetTxId: (txId: string) => void;
-  setRawLogs: (logs: any[]) => void;
-  setDisplayLogs: (logs: any[]) => void;
-  setShowHighValueOnly: (show: boolean) => void;
-  reset: () => void;
-}
+import type { AiState } from '@/types';
 
 export const useAiStore = create<AiState>()(
   persist(

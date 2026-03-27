@@ -1,4 +1,9 @@
-// Auto-generated merged environment list from SecureCRT and FlashFXP
+/**
+ * @fileoverview Auto-generated merged environment list from SecureCRT and FlashFXP.
+ * @responsibility This file serves ONLY as the initial seed data for host configurations. 
+ *                 At runtime, the actual source of truth lives in `config.json` / localStorage 
+ *                 via `useConfigStore`. Do NOT use this file for runtime lookups.
+ */
 
 export const MERGED_HOSTS: Record<string, any[]> = {
   "仿真": [

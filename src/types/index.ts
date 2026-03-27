@@ -59,10 +59,13 @@ export interface AppConfig {
 export interface LogEntry {
   id: string;
   timestamp: string;
-  source: keyof HostConfig; // which host this log came from
+  source: string; // which system this log came from
+  sourceLabel?: string;
+  hostLabel?: string;
   level: "INFO" | "WARN" | "ERROR" | "DEBUG";
   message: string;
   raw: string;
+  fileName?: string;
 }
 
 export interface LogQueryParams {
@@ -75,6 +78,24 @@ export interface LogQueryParams {
 }
 
 // AI analysis types
+
+export type AiAnalysisStatus = "idle" | "fetching" | "fetching_logs" | "analyzing" | "done" | "error" | "stopped";
+
+export interface AiState {
+  analysisText: string;
+  status: AiAnalysisStatus;
+  targetTxId: string;
+  rawLogs: any[];
+  displayLogs: any[];
+  showHighValueOnly: boolean;
+  setAnalysisText: (text: string | ((prev: string) => string)) => void;
+  setStatus: (status: AiAnalysisStatus) => void;
+  setTargetTxId: (txId: string) => void;
+  setRawLogs: (logs: any[]) => void;
+  setDisplayLogs: (logs: any[]) => void;
+  setShowHighValueOnly: (show: boolean) => void;
+  reset: () => void;
+}
 
 export interface CallChainNode {
   node: string;

@@ -11,6 +11,12 @@ export interface LogEntry {
   index?: number;
 }
 
+/**
+ * @fileoverview Log Data Purifier
+ * @responsibility Determines WHICH log lines are valuable and retained. Filters out noise, 
+ *                 deduplicates repeated payloads, and slices log boundaries.
+ */
+
 export function filterHighValueLogs(logs: LogEntry[]): LogEntry[] {
   // Regex patterns for high-value detection
   const sqlPattern = /(select\s+.*?\s+from|insert\s+into|update\s+.*?\s+set|delete\s+from|call\s+.*?\()/i;

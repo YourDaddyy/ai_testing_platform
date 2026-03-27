@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import iconv from "iconv-lite";
 
+/**
+ * @route POST /api/proxy
+ * @responsibility HTTP Proxy for the Request Tool (HTTP Request panel).
+ *                 Bypasses browser CORS restrictions allowing the UI to send 
+ *                 direct API requests to internal nodes and auto-detect encoding.
+ */
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

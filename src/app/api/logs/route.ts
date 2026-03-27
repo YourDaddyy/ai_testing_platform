@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { NodeSSH } from "node-ssh";
 import iconv from "iconv-lite";
+import { LogEntry } from "@/types";
 
 interface HostConfig {
   host: string;
@@ -111,17 +112,7 @@ async function sshGrep(cfg: HostConfig, queryKey: string): Promise<string[]> {
   }
 }
 
-export interface LogEntry {
-  id: string;
-  timestamp: string;
-  source: string;
-  sourceLabel: string;
-  hostLabel?: string;
-  level: "INFO" | "WARN" | "ERROR" | "DEBUG";
-  message: string;
-  raw: string;
-  fileName?: string;
-}
+
 
 const LOG_PATTERN = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.,]\d{1,3})[\s\[\]]+(ERROR|WARN|INFO|DEBUG|TRACE|FATAL)[\s\]]+(.+)/i;
 // TE text log: "PID: 1261824 TIME: 2026/03/18 13:42:44.961.780 LEVEL: 4 MSG: ..."
